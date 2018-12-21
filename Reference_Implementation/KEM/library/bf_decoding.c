@@ -39,6 +39,18 @@
 #define ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
 #define ROTUPC(a)   ( (a >> 8) | (a << (DIGIT_SIZE_b - 8)) )
 
+/******************** START of functions' definitions for vector operations *************************/
+
+static inline __m128i _mm256_extractf128i_lower_ps(__m256 a) {
+  return _mm256_extractf128_si256(_mm256_castps_si256(a), 0x00);
+}
+
+static inline __m128i _mm256_extractf128i_upper_ps(__m256 a) {
+  return _mm256_extractf128_si256(_mm256_castps_si256(a), 0x01);
+}
+
+/******************** END of functions' definitions for vector operations *************************/
+
 int bf_decoding(DIGIT out[], // N0 polynomials
                 const POSITION_T HtrPosOnes[N0][DV],
                 const POSITION_T QtrPosOnes[N0][M],
@@ -94,6 +106,28 @@ int bf_decoding(DIGIT out[], // N0 polynomials
                      vecSyndBits[vecSyndBitsWordIdx] = ROTBYTE(vecSyndBits[vecSyndBitsWordIdx]);
                      vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
                  }
+                 // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
+                 __m256 tmpReg = _mm256_loadu_ps((float*) &HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B]);
+
+                 // tmpReg splitted in two 128i vectors
+                 __m128i lowerTmp = _mm256_extractf128i_lower_ps(tmpReg);
+                 __m128i upperTmp = _mm256_extractf128i_upper_ps(tmpReg);
+
+                 // semantically equivalent to tmp += vectorIdx * DIGIT_SIZE_B
+                 __m128i addend = _mm_set1_epi32(vectorIdx * DIGIT_SIZE_B); // vectorIdx * DIGIT_SIZE_B saved in a __m128i
+                 lowerTmp = _mm_add_epi32(lowerTmp, addend);
+                 upperTmp = _mm_add_epi32(upperTmp, addend);
+
+                 tmpReg = __m256 _mm256_setr_m128 (lowerTmp, upperTmp);
+
+                 // I want to compare each element of tmpReg with P: here I'm using a compare function that will
+                 // return a mask (0x1d = 29 means Greater-than-or-equal (ordered, non-signaling))
+                 __m256 broadcastedP = _mm256_set1_ps((float) P);
+                 __m256 cmpMask = _mm256_cmp_ps(tmpReg, broadcastedP, 0x1d);
+
+                // semantically equivalent to: tmp = tmp >= P ? tmp - P : tmp;
+                tmpReg = _mm256_blendv_ps (tmpReg, _mm256_sub_ps(tmpReg, broadcastedP), cmpMask);
+
              }
 
              for(int vecSyndBitsElemIdx = 0;
