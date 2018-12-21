@@ -42,6 +42,26 @@ int bf_decoding(DIGIT err[],
                 DIGIT privateSyndrome[]       //  1 polynomial  -- param. in/out
                );
 
+static inline __m256 _mm256_rotbyte(__m256 a) {
+  __m128i lowerPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x00));
+  __m128i upperPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x01));
+
+  lowerPart = _mm_rotbyte_epi32(&lowerPart);
+  upperPart = _mm_rotbyte_epi32(&upperPart);
+
+  __m256i mergedVec = _mm256_loadu2_m128i(upperPart, lowerPart); //insert
+
+  return mm256_castsi256_ps(mergedVec);
+}
+
+static inline __m128i _mm_rotbyte_epi32(__m128i a) {
+  // ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
+  __m128i leftShifted = _mm_slli_epi32 (a, 0x08);
+  __m128i rightShifted = _mm_srli_epi32 (a, (DIGIT_SIZE_b - 8));
+
+  return _mm_or_si128(leftShifted, rightShifted);
+}
+
 /******************** START of definitions for N0 = 2 *************************/
 #if (CATEGORY == 1) && (N0 == 2)
 #define SYNDROME_TRESH_LOOKUP_TABLE {0,       43},\
