@@ -42,6 +42,8 @@
 
 #define                NUM_BITS_GF2X_ELEMENT (P)
 #define              NUM_DIGITS_GF2X_ELEMENT ((P+DIGIT_SIZE_b-1)/DIGIT_SIZE_b)
+#define MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT ( (P % DIGIT_SIZE_b) ? (P % DIGIT_SIZE_b)-1 : DIGIT_SIZE_b-1 )
+
 #define                NUM_BITS_GF2X_MODULUS (P+1)
 #define              NUM_DIGITS_GF2X_MODULUS ((P+1+DIGIT_SIZE_b-1)/DIGIT_SIZE_b)
 #define MSb_POSITION_IN_MSB_DIGIT_OF_MODULUS (P-DIGIT_SIZE_b*(NUM_DIGITS_GF2X_MODULUS-1))
@@ -90,6 +92,10 @@
 
 /*----------------------------------------------------------------------------*/
 
+
+
+/*----------------------------------------------------------------------------*/
+
 static inline void gf2x_copy(DIGIT dest[], const DIGIT in[])
 {
    for (int i = NUM_DIGITS_GF2X_ELEMENT-1; i >= 0; i--)
@@ -133,6 +139,7 @@ static inline void gf2x_mod_add(DIGIT Res[], const DIGIT A[], const DIGIT B[])
  * (Chapter 11 -- Algorithm 11.44 -- pag 223)
  *
  */
+int gf2x_mod_inverse_HAC(DIGIT out[], const DIGIT in[]);
 int gf2x_mod_inverse(DIGIT out[], const DIGIT in[]);/* ret. 1 if inv. exists */
 
 /*---------------------------------------------------------------------------*/
@@ -173,10 +180,83 @@ static inline int population_count(DIGIT upc[])
 #else
 #error "Missing implementation for population_count(...) \
 with this CPU word bitsize !!! "
-#endif    
+#endif
    }
    return ret;
 } // end population_count
+
+/*--------------------------------------------------------------------------*/
+
+/* returns a packed representation of the bits corresponding to the coefficients
+ * of the range first_exponent to first_exponent+7 mod P*/
+
+#include <stdio.h>
+#include <stdlib.h>
+static inline
+DIGIT gf2x_get_8_coeff_vector(const DIGIT poly[], const unsigned int first_exponent)
+{
+   /* ctime execution requires the op to load always two words : pick the one of 
+    * base exponent and the "following" one */
+   unsigned int straightIdx = (NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1) - first_exponent;
+   unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
+   DIGIT lsw = poly[digitIdx];
+
+   /*the most significant valid bit in the lsw is always the 63rd, save for the case
+    * where digitIdx is 0. In that case the slack bits are cut off, and the extraction
+    * mask for the first word should be adjusted accordingly */
+   int ceiling_pos;
+   if (digitIdx == 0){
+       ceiling_pos = MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT; /* 4 */
+   } else{
+       ceiling_pos = DIGIT_SIZE_b-1;
+   }
+
+   /* load word with wraparound */
+   digitIdx  = (digitIdx == 0) ? NUM_DIGITS_GF2X_ELEMENT-1 : digitIdx-1;
+   DIGIT msw = poly[digitIdx];
+   unsigned int inDigitIdx = DIGIT_SIZE_b-1-(straightIdx % DIGIT_SIZE_b);
+
+#if P%DIGIT_SIZE_b < 8
+/* This case is managed to allow experimentation with parameter sets different
+ * from the proposed ones.
+ * It will yield a structural hindrance to constant time implementations*/
+   DIGIT result = 0;
+
+   if (digitIdx == 0 && 8 - (int)(DIGIT_SIZE_b-inDigitIdx) > (int)(P%DIGIT_SIZE_b)){
+     DIGIT bottomw = poly[NUM_DIGITS_GF2X_ELEMENT-1];
+     int topmostBits = 8 - (P%DIGIT_SIZE_b) - (DIGIT_SIZE_b-inDigitIdx);
+     result = bottomw & ( (((DIGIT) 1) << topmostBits) -1);
+     result = result << (P%DIGIT_SIZE_b);
+     result |=  poly[0];
+     result = result << (8-topmostBits-(P%DIGIT_SIZE_b));
+     DIGIT vectorExtractionMask = (1 << (8-topmostBits-(P%DIGIT_SIZE_b)))-1;
+     vectorExtractionMask = vectorExtractionMask << (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b)));
+     result |= ( (poly[1]  & vectorExtractionMask) >> (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b))) );
+   } else {
+   int excessMSb = inDigitIdx + 7 - ceiling_pos;
+   excessMSb = excessMSb < 0 ? 0 : excessMSb;
+
+   result = msw & ( (((DIGIT) 1) << excessMSb) -1);
+   result = result << (8-excessMSb);
+   /*no specialization needed as the slack bits are kept clear */
+   DIGIT vectorExtractionMask = (1 << 8) -1;
+   result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
+   }
+#else
+   DIGIT result = 0;
+   /* one-byte wide mask to perform extraction */
+   int excessMSb = inDigitIdx + 7 - ceiling_pos;
+   excessMSb = excessMSb < 0 ? 0 : excessMSb;
+
+   result = msw & ( (((DIGIT) 1) << excessMSb) -1);
+   result = result << (8-excessMSb);
+   /*no specialization needed as the slack bits are kept clear */
+   DIGIT vectorExtractionMask = (1 << 8) -1;
+   result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
+#endif
+
+   return result;
+}
 
 /*--------------------------------------------------------------------------*/
 
@@ -260,13 +340,9 @@ void gf2x_mod_mul_sparse(int
                          int sizeB, /*number of ones in B*/
                          const POSITION_T B[]);
 /*----------------------------------------------------------------------------*/
-/* PRE: amount is lesser than a digit wide */
-void right_bit_shift_n(const int length, DIGIT in[], int amount);
-/*----------------------------------------------------------------------------*/
-/* PRE: amount is lesser than a digit wide */
-void left_bit_shift_n(const int length, DIGIT in[], int amount);
-/*----------------------------------------------------------------------------*/
+
 void left_bit_shift_wide_n(const int length, DIGIT in[], int amount);
+
 /*----------------------------------------------------------------------------*/
 void gf2x_mod_mul_dense_to_sparse(DIGIT Res[],
                                   const DIGIT dense[],
@@ -293,7 +369,9 @@ int partition (POSITION_T arr[], int lo, int hi)
 
    return i+1;
 } // end partition
+
 /*----------------------------------------------------------------------------*/
+
 static inline
 void quicksort(POSITION_T Res[], unsigned int sizeR)
 {
