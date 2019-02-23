@@ -195,7 +195,7 @@ with this CPU word bitsize !!! "
 static inline
 DIGIT gf2x_get_8_coeff_vector(const DIGIT poly[], const unsigned int first_exponent)
 {
-   /* ctime execution requires the op to load always two words : pick the one of 
+   /* ctime execution requires the op to load always two words : pick the one of
     * base exponent and the "following" one */
    unsigned int straightIdx = (NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;

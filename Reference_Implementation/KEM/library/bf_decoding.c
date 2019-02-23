@@ -35,6 +35,7 @@
 #include <assert.h>
 #include "architecture_detect.h"
 #include <immintrin.h>
+#include "m128i_division.h"
 
 #define ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
 #define ROTUPC(a)   ( (a >> 8) | (a << (DIGIT_SIZE_b - 8)) )
@@ -49,6 +50,59 @@ static inline __m128i _mm256_extractf128i_upper_ps(__m256 a) {
   return _mm256_extractf128_si256(_mm256_castps_si256(a), 0x01);
 }
 
+static inline __m256 _mm256_rotbyte(__m256 a) {
+  __m128i lowerPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x00));
+  __m128i upperPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x01));
+
+  lowerPart = _mm_rotbyte_epi32(lowerPart);
+  upperPart = _mm_rotbyte_epi32(upperPart);
+
+  __m256i mergedVec = _mm256_loadu2_m128i(upperPart, lowerPart); //insert
+
+  return mm256_castsi256_ps(mergedVec);
+}
+
+static inline __m128i _mm_rotbyte_epi32(__m128i a) {
+  // ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
+  __m128i leftShifted = _mm_slli_epi32 (a, 0x08);
+  __m128i rightShifted = _mm_srli_epi32 (a, (DIGIT_SIZE_b - 8));
+
+  return _mm_or_si128(leftShifted, rightShifted);
+}
+
+static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256 first_exponent_vector) {
+  __m128i lower_exponent_vector = _mm256_extractf128i_lower_ps(first_exponent_vector);
+  __m128i upper_exponent_vector = _mm256_extractf128i_upper_ps(first_exponent_vector);
+
+  __m128i addend = __m128i _mm_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
+
+  __m128i lowerStraightIdx = _mm_sub_epi32 (addend, lower_exponent_vector);
+  __m128i upperStraightIdx = _mm_sub_epi32 (addend, upper_exponent_vector);
+
+  unsigned int indexes[8];
+
+  __m128i lowerDigitIdx = _mm_div_epi32(lowerStraightIdx, DIGIT_SIZE_b);
+  __m128i upperDigitIdx = _mm_div_epi32(upperStraightIdx, DIGIT_SIZE_b);
+
+  __m256i digitIdx = _mm256_loadu2_m128i (upperDigitIdx, lowerDigitIdx);
+
+  // Store 256-bits 8x(32-bit) from digitIdx into memory
+  _mm256_store_ps((float*) indexes, (__m256)digitIdx);
+  // POSSO FARE DIRETTAMENTE LA STORE
+  // DI LOWER E UPPER
+
+  __m256i lsw[2];
+
+  for(int i = 0; i <= 1; i++) {
+    lsw[i] = _mm256_setr_epi64x (poly[indexes[i*4]], poly[indexes[i*4+1]], poly[indexes[i*4+2]], poly[indexes[i*4+3]]);
+  }
+
+  // da continuare
+
+
+
+
+}
 /******************** END of functions' definitions for vector operations *************************/
 
 int bf_decoding(DIGIT out[], // N0 polynomials
