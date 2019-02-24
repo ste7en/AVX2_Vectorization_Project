@@ -43,12 +43,12 @@
 
 /******************** START of functions' definitions for vector operations *************************/
 
-static inline __m128i _mm256_extractf128i_lower_ps(__m256 a) {
-   return _mm256_extractf128_si256(_mm256_castps_si256(a), 0x00);
+static inline __m128i _mm256_extractf128i_lower(__m256i a) {
+   return _mm256_extractf128_si256(a, 0x00);
 }
 
-static inline __m128i _mm256_extractf128i_upper_ps(__m256 a) {
-   return _mm256_extractf128_si256(_mm256_castps_si256(a), 0x01);
+static inline __m128i _mm256_extractf128i_upper(__m256i a) {
+   return _mm256_extractf128_si256(a, 0x01);
 }
 
 static inline __m256 _mm256_rotbyte(__m256 a) {
@@ -71,11 +71,26 @@ static inline __m128i _mm_rotbyte_epi32(__m128i a) {
    return _mm_or_si128(leftShifted, rightShifted);
 }
 
-static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256 first_exponent_vector) {
-   __m128i lower_exponent_vector = _mm256_extractf128i_lower_ps(first_exponent_vector);
-   __m128i upper_exponent_vector = _mm256_extractf128i_upper_ps(first_exponent_vector);
+static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256i first_exponent_vector) {
 
-   __m128i addend = __m128i _mm_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
+#ifdef HIGH_PERFORMANCE_X86_64
+   __m256i addend = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
+   __m256i straightIdx = _mm256_sub_epi32 (addend, first_exponent_vector);
+   __m256i divisor = _mm256_set1_epi32(DIGIT_SIZE_b);
+   __m256i digitIdx = _mm256_div_epu32 (straightIdx, divisor);
+
+   // Gather operation to load 8x 64-bit digits in two parts
+   __m256i lowerDigitIdx = _mm256_extractf128i_lower(digitIdx);
+   __m256i lsw_lower = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+   __m256i upperDigitIdx = _mm256_extractf128i_upper(digitIdx);
+   __m256i lsw_upper = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+
+#elif HIGH_COMPATIBILITY_X86_64
+
+   __m128i lower_exponent_vector = _mm256_extractf128i_lower(first_exponent_vector);
+   __m128i upper_exponent_vector = _mm256_extractf128i_upper(first_exponent_vector);
+
+   __m128i addend = _mm_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
 
    __m128i lowerStraightIdx = _mm_sub_epi32 (addend, lower_exponent_vector);
    __m128i upperStraightIdx = _mm_sub_epi32 (addend, upper_exponent_vector);
@@ -101,16 +116,15 @@ static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256 first_e
    // da continuare
 
 
-
-
+#endif
 }
 /******************** END of functions' definitions for vector operations *************************/
 
 int bf_decoding(DIGIT out[], // N0 polynomials
-   const POSITION_T HtrPosOnes[N0][DV],
-   const POSITION_T QtrPosOnes[N0][M],
-   DIGIT privateSyndrome[]  //  1 polynomial
-)
+                const POSITION_T HtrPosOnes[N0][DV],
+                const POSITION_T QtrPosOnes[N0][M],
+                DIGIT privateSyndrome[]  //  1 polynomial
+               )
 {
    #if P < 64
    #error The circulant block size should exceed 64
@@ -163,6 +177,7 @@ for (int i = 0; i < N0; i++) {
       for(vecSyndBitsWordIdx = 0;
          vecSyndBitsWordIdx < (DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B-1;
          vecSyndBitsWordIdx++){
+
             for(int vecSyndBitsElemIdx = 0;
                vecSyndBitsElemIdx < DIGIT_SIZE_B;
                vecSyndBitsElemIdx++){
@@ -173,29 +188,73 @@ for (int i = 0; i < N0; i++) {
                   vecSyndBits[vecSyndBitsWordIdx] = ROTBYTE(vecSyndBits[vecSyndBitsWordIdx]);
                   vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
                }
-               // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
-               __m256 tmpReg = _mm256_loadu_ps((float*) &HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B]);
 
-               // tmpReg splitted in two 128i vectors
-               __m128i lowerTmp = _mm256_extractf128i_lower_ps(tmpReg);
-               __m128i upperTmp = _mm256_extractf128i_upper_ps(tmpReg);
+#ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
+            // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
+            __m256i tmpReg = _mm256_castps_si256(_mm256_loadu_ps((float*) &HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B]));
+            __m256  cmpMask; // used in the conditional assignment
+            __m256  tmpResultOfSubtraction; // used in the conditional assignment, it's the result of tmp - P
 
-               // semantically equivalent to tmp += vectorIdx * DIGIT_SIZE_B
-               __m128i addend = _mm_set1_epi32(vectorIdx * DIGIT_SIZE_B); // vectorIdx * DIGIT_SIZE_B saved in a __m128i
-               lowerTmp = _mm_add_epi32(lowerTmp, addend);
-               upperTmp = _mm_add_epi32(upperTmp, addend);
+#ifdef HIGH_PERFORMANCE_X86_64 // AVX2 only
+            // semantically equivalent to tmp += vectorIdx * DIGIT_SIZE_B
+            __m256i addend = _mm256_set1_epi32 (vectorIdx * DIGIT_SIZE_B);
+            tmpReg = _mm256_add_epi32 (tmpReg, addend);
 
-               tmpReg = __m256 _mm256_setr_m128 (lowerTmp, upperTmp);
+            /* I need to compare tmpReg and broadcastedP to check if
+             * each element in tmpReg is greather-than-or-equal to P.
+             * To do that, a compare mask will be composed by a greather-than comparision
+             * between P and tmpReg (P > tmpRegElement) so that if it's true
+             * the element mustn't change. */
+             __m256i broadcastedP = _mm256_set1_epi32(P);
+             tmpResultOfSubtraction = _mm256_castsi256_ps(_mm256_sub_epi32 (tmpReg, broadcastedP));
 
-               // I want to compare each element of tmpReg with P: here I'm using a compare function that will
-               // return a mask (0x1d = 29 means Greater-than-or-equal (ordered, non-signaling))
-               __m256 broadcastedP = _mm256_set1_ps((float) P);
-               __m256 cmpMask = _mm256_cmp_ps(tmpReg, broadcastedP, 0x1d);
+            // __m256i equalMask = _mm256_cmpeq_epi32 (__m256i a, __m256i b);
+            // __m256i greatherThanMask = _mm256_cmpgt_epi32 (__m256i a, __m256i b);
+            //
+            // __m256i cmpMask = __m256i _mm256_or_si256 (equalMask, greatherThanMask);
 
-               // semantically equivalent to: tmp = tmp >= P ? tmp - P : tmp;
-               tmpReg = _mm256_blendv_ps (tmpReg, _mm256_sub_ps(tmpReg, broadcastedP), cmpMask);
+            cmpMask = _mm256_castsi256_ps(_mm256_cmpgt_epi32 (broadcastedP, tmpReg)); // m256i cast to m256
 
-            }
+#else // MMX to AVX only
+
+            // tmpReg splitted in two 128i vectors
+            __m128i lowerTmp = _mm256_extractf128i_lower(tmpReg);
+            __m128i upperTmp = _mm256_extractf128i_upper(tmpReg);
+
+            // semantically equivalent to tmp += vectorIdx * DIGIT_SIZE_B
+            __m128i addend = _mm_set1_epi32(vectorIdx * DIGIT_SIZE_B); // vectorIdx * DIGIT_SIZE_B saved in a __m128i
+            lowerTmp = _mm_add_epi32(lowerTmp, addend);
+            upperTmp = _mm_add_epi32(upperTmp, addend);
+
+            tmpReg = _mm256_setr_m128 (lowerTmp, upperTmp);
+
+            __m128i broadcastedP = _mm_set1_epi32 (P);
+            tmpResultOfSubtraction = _mm256_setr_m128 (_mm_sub_epi32 (lowerTmp, broadcastedP), _mm_sub_epi32 (upperTmp, broadcastedP));
+
+            // // I want to compare each element of tmpReg with P: here I'm using a compare function that will
+            // // return a mask (0x1d = 29 means Greater-than-or-equal (ordered, non-signaling))
+            //
+            // __m256 cmpMask = _mm256_cmp_ps(tmpReg, broadcastedP, 0x1d);
+
+            __m128i upperCmpMask = _mm_cmpgt_epi32 (broadcastedP, upperTmp);
+            __m128i lowerCmpMask = _mm_cmpgt_epi32 (broadcastedP, lowerTmp);
+            cmpMask = _mm256_castsi256_ps(_mm256_setr_m128i(lowerCmpMask, upperCmpMask));
+
+#endif // end of (AVX2 only) and (MMX to AVX only)
+
+            // semantically equivalent to: tmp = tmp >= P ? tmp - P : tmp;
+            // changed to tmp = P > tmp ? tmp : tmpResultOfSubtraction
+            tmpReg = _mm256_blendv_ps (tmpResultOfSubtraction, tmpReg, cmpMask);
+
+
+
+
+
+
+
+#endif // end of MMX to AVX2
+
+         } // end for vecSyndBitsWordIdx
 
             for(int vecSyndBitsElemIdx = 0;
                vecSyndBitsElemIdx < DV % DIGIT_SIZE_B;
@@ -223,7 +282,7 @@ for (int i = 0; i < N0; i++) {
 #endif
                }
                *( (DIGIT*) (unsatParityChecks+i*P + vectorIdx*DIGIT_SIZE_B )) = upcVec;
-            }
+            } // end for vectorIdx
          }
 
          /* padding unsatisfiedParityChecks */
