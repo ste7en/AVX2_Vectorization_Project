@@ -35,12 +35,22 @@
 #include <assert.h>
 #include "architecture_detect.h"
 #include <immintrin.h>
-#include "m128i_division.h"
 
 #define ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
 #define ROTUPC(a)   ( (a >> 8) | (a << (DIGIT_SIZE_b - 8)) )
 #define ROUND_UP(amount, round_amt) ( ((amount+round_amt-1)/round_amt)*round_amt )
 
+#if (DIGIT_MAX == UINT64_MAX)
+#define DIGIT_SIZE_b_EXPONENT 6
+#elif (DIGIT_MAX == UINT32_MAX)
+#define DIGIT_SIZE_b_EXPONENT 5
+#elif (DIGIT_MAX == UINT16_MAX)
+#define DIGIT_SIZE_b_EXPONENT 4
+#elif (DIGIT_MAX == UINT8_MAX)
+#define DIGIT_SIZE_b_EXPONENT 3
+#else
+#error "unable to find the bitsize of size_t"
+#endif
 /******************** START of functions' definitions for vector operations *************************/
 
 static inline __m128i _mm256_extractf128i_lower(__m256i a) {
@@ -74,46 +84,59 @@ static inline __m128i _mm_rotbyte_epi32(__m128i a) {
 static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256i first_exponent_vector) {
 
 #ifdef HIGH_PERFORMANCE_X86_64
-   __m256i addend = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
-   __m256i straightIdx = _mm256_sub_epi32 (addend, first_exponent_vector);
-   __m256i divisor = _mm256_set1_epi32(DIGIT_SIZE_b);
-   __m256i digitIdx = _mm256_div_epu32 (straightIdx, divisor);
+   __m256i addend       = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
+   __m256i straightIdx  = _mm256_sub_epi32 (addend, first_exponent_vector);
+   // division by a power of two becomes a logic right shift
+   __m256i digitIdx     = _mm256_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
 
-   // Gather operation to load 8x 64-bit digits in two parts
-   __m256i lowerDigitIdx = _mm256_extractf128i_lower(digitIdx);
-   __m256i lsw_lower = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
-   __m256i upperDigitIdx = _mm256_extractf128i_upper(digitIdx);
-   __m256i lsw_upper = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+   // Gather operation to load 8x 64-bit digits in two registers
+   __m256i lowerDigitIdx   = _mm256_extractf128i_lower (digitIdx);
+   __m256i lowerLsw        = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+   __m256i upperDigitIdx   = _mm256_extractf128i_upper (digitIdx);
+   __m256i upperLsw        = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
 
-#elif HIGH_COMPATIBILITY_X86_64
+   /*the most significant valid bit in the lsw is always the 63rd, save for the case
+    * where digitIdx is 0. In that case the slack bits are cut off, and the extraction
+    * mask for the first word should be adjusted accordingly */
+   __m256i msbPosInMSB  = _mm256_set1_epi32 (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT); // digitIdx == 0
+   __m256i msValidBit   = _mm256_set1_epi32 (DIGIT_SIZE_b-1); // digitIdx != 0
+   // I'm using digitIdx as mask
+   __m256i ceiling_pos  = _mm256_castps_si256( _mm256_blendv_ps (msbPosInMSB, msValidBit, digitIdx) );
 
-   __m128i lower_exponent_vector = _mm256_extractf128i_lower(first_exponent_vector);
-   __m128i upper_exponent_vector = _mm256_extractf128i_upper(first_exponent_vector);
+   /* load word with wraparound */
+   __m256i numDigitsElement   = _mm256_set1_epi32 (NUM_DIGITS_GF2X_ELEMENT-1);
+   __m256i one                = _mm256_set1_epi32 (1);
+   __m256i subtraction        = _mm256_sub_epi32  (digitIdx, one);
+   /* Following a conditional assignment:
+   *  digitIdx  = (digitIdx == 0) ? NUM_DIGITS_GF2X_ELEMENT-1 : digitIdx-1
+   */
+   digitIdx = _mm256_blendv_ps (numDigitsElement, subtraction, digitIdx);
 
-   __m128i addend = _mm_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
+   // Gather operation to load 8x 64-bit digits in two registers
+   lowerDigitIdx     = _mm256_extractf128i_lower (digitIdx);
+   __m256i lowerMsw  = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+   upperDigitIdx     = _mm256_extractf128i_upper (digitIdx);
+   __m256i upperMsw  = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
 
-   __m128i lowerStraightIdx = _mm_sub_epi32 (addend, lower_exponent_vector);
-   __m128i upperStraightIdx = _mm_sub_epi32 (addend, upper_exponent_vector);
+   // semantically equivalent to inDigitIdx = DIGIT_SIZE_b-1-(straightIdx % DIGIT_SIZE_b)
+   __m256i digitBits = _mm256_set1_epi32(DIGIT_SIZE_b-1);
+   __m256i modulo    = _mm256_and_si256 (straightIdx, digitBits); // n % 2^i = n & (2^i - 1)
+   __m256i inDigitIdx= _mm256_abs_epi32 (_mm256_sub_epi32 (_mm256_sub_epi32(digitBits, one), moduloOp));
 
-   unsigned int indexes[8];
+#if P%DIGIT_SIZE_b < 8
+/* This case is managed to allow experimentation with parameter sets different
+ * from the proposed ones.
+ * It will yield a structural hindrance to constant time implementations*/
+   __m64 result = _mm_setzero_si64();
+   // broadcasted value used to compute the conditional result
+   __m256i epi64_bottomw = _mm256_set1_epi64x (poly[NUM_DIGITS_GF2X_ELEMENT-1]);
+   // topmostBits = 8 - (P%DIGIT_SIZE_b) - (DIGIT_SIZE_b-inDigitIdx)
+   __m256i topmostBits = _mm256_sub_epi32 (_mm256_set1_epi32 (8 - (P%DIGIT_SIZE_b) - DIGIT_SIZE_b), inDigitIdx);
 
-   __m128i lowerDigitIdx = _mm_div_epi32(lowerStraightIdx, DIGIT_SIZE_b);
-   __m128i upperDigitIdx = _mm_div_epi32(upperStraightIdx, DIGIT_SIZE_b);
 
-   __m256i digitIdx = _mm256_loadu2_m128i (upperDigitIdx, lowerDigitIdx);
+#else // P%DIGIT_SIZE_b >= 8
 
-   // Store 256-bits 8x(32-bit) from digitIdx into memory
-   _mm256_store_ps((float*) indexes, (__m256)digitIdx);
-   // POSSO FARE DIRETTAMENTE LA STORE
-   // DI LOWER E UPPER
-
-   __m256i lsw[2];
-
-   for(int i = 0; i <= 1; i++) {
-      lsw[i] = _mm256_setr_epi64x (poly[indexes[i*4]], poly[indexes[i*4+1]], poly[indexes[i*4+2]], poly[indexes[i*4+3]]);
-   }
-
-   // da continuare
+#endif // P%DIGIT_SIZE_b < 8
 
 
 #endif
