@@ -81,7 +81,12 @@ static inline __m128i _mm_rotbyte_epi32(__m128i a) {
    return _mm_or_si128(leftShifted, rightShifted);
 }
 
-static inline __m256i get_64_coeff_vector(const DIGIT poly[], const __m256i first_exponent_vector) {
+static inline void get_64_coeff_vector(const DIGIT poly[],
+                                       const __m256i first_exponent_vector,
+                                       const __m256i *restrict __lowerResult,
+                                       const __m256i *restrict __upperResult
+                                       )
+{
 
 #ifdef HIGH_PERFORMANCE_X86_64
    __m256i addend       = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
@@ -146,7 +151,7 @@ static inline __m256i get_64_coeff_vector(const DIGIT poly[], const __m256i firs
    __m256i lowerInDigitIdx_epi64 = _mm256_cvtepu32_epi64(lowerInDigitIdx);
    __m256i upperInDigitIdx_epi64 = _mm256_cvtepu32_epi64(upperInDigitIdx);
 
-#if P%DIGIT_SIZE_b < 8
+#if P%DIGIT_SIZE_b < 32
    /* This case is managed to allow experimentation with parameter sets different
     * from the proposed ones.
     * It will yield a structural hindrance to constant time implementations*/
@@ -417,11 +422,111 @@ static inline __m256i get_64_coeff_vector(const DIGIT poly[], const __m256i firs
                                                )
                                            );
 #else // P%DIGIT_SIZE_b >= 8
+   __m256i lowerResult;
+   __m256i upperResult;
 
+   /* one-byte wide mask to perform extraction */
+   // int excessMSb = inDigitIdx + 7 - ceiling_pos
+   __m256i excessMSb = _mm256_sub_epi32 (
+                        _mm256_add_epi32 (
+                           inDigitIdx,
+                           _mm256_set1_epi32 (7)
+                           ),
+                        ceiling_pos);
+   // excessMSb = excessMSb < 0 ? 0 : excessMSb
+   __m256i conditionalMask = _mm256_cmpgt_epi32 (_mm256_setzero_si256, excessMSb);
+   excessMSb = _mm256_blendv_ps(
+                  _mm256_castsi256_ps(_mm256_setzero_si256),
+                  _mm256_castsi256_ps(excessMSb),
+                  _mm256_castsi256_ps(conditionalMask)
+               );
+
+   // result = msw & ( (((DIGIT) 1) << excessMSb) -1)
+   __m256i one_epi64             = _mm256_set1_epi64x (1);
+   __m256i lowerExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_lower(excessMSb) );
+   __m256i upperExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_upper(excessMSb) );
+
+   __m256i lowerResult           = _mm256_and_si256 (
+                                    lowerMsw,
+                                    _mm256_sub_epi64 (
+                                       _mm256_sllv_epi64 (
+                                          one_epi64,
+                                          lowerExcessMSb_epi64),
+                                       one_epi64
+                                    )
+                                   );
+   __m256i upperResult           = _mm256_and_si256 (
+                                    upperMsw,
+                                    _mm256_sub_epi64 (
+                                       _mm256_sllv_epi64 (
+                                          one_epi64,
+                                          upperExcessMSb_epi64),
+                                       one_epi64
+                                    )
+                                   );
+
+   // result = result << (8-excessMSb)
+   lowerResult = _mm256_sllv_epi64 (
+                  lowerIntermediateResultIfFalse,
+                  _mm256_sub_epi64 (
+                     _mm256_set1_epi64x(8),
+                     lowerExcessMSb_epi64 )
+                 );
+   upperResult = _mm256_sllv_epi64 (
+                  upperIntermediateResultIfFalse,
+                  _mm256_sub_epi64 (
+                     _mm256_set1_epi64x(8),
+                     upperExcessMSb_epi64 )
+                 );
+
+   /*no specialization needed as the slack bits are kept clear */
+   // DIGIT vectorExtractionMask = (1 << 8) -1;
+   __m256i vectorExtractionMask = _mm256_sub_epi64 (
+                                    _mm256_sllv_epi64 (
+                                       one_epi64,
+                                       _mm256_set1_epi64x(8)
+                                    ),
+                                    _mm256_set1_epi64x(1)
+                                  );
+
+   // result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
+   lowerResult = _mm256_or_si256 (
+                   lowerResult,
+                   _mm256_srlv_epi64 (
+                      _mm256_and_si256 (
+                         lowerLsw,
+                         _mm256_sllv_epi64(
+                            vectorExtractionMask,
+                            lowerInDigitIdx_epi64
+                         ) // end shift left
+                      ),
+                      lowerInDigitIdx_epi64
+                   ) // end shift right
+                 );
+   upperResult = _mm256_or_si256 (
+                   upperResult,
+                   _mm256_srlv_epi64 (
+                      _mm256_and_si256 (
+                         upperLsw,
+                         _mm256_sllv_epi64(
+                            vectorExtractionMask,
+                            upperInDigitIdx_epi64
+                         ) // end shift left
+                      ),
+                      upperInDigitIdx_epi64
+                   ) // end shift right
+                 );
 #endif // P%DIGIT_SIZE_b < 8
 
-
 #endif // AVX2
+
+__asm__ __volatile__ (  "nop\n\t"
+                        "nop\n\t"
+                        "nop\n\t"
+                     );
+
+   *__lowerResult = lowerResult;
+   *__upperResult = upperResult;
 }
 /******************** END of functions' definitions for vector operations *************************/
 
