@@ -61,26 +61,6 @@ static inline __m128i _mm256_extractf128i_upper(__m256i a) {
    return _mm256_extractf128_si256(a, 0x01);
 }
 
-static inline __m256 _mm256_rotbyte(__m256 a) {
-   __m128i lowerPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x00));
-   __m128i upperPart = _mm_castps_si128(_mm256_extractf128_ps(a, 0x01));
-
-   lowerPart = _mm_rotbyte_epi32(lowerPart);
-   upperPart = _mm_rotbyte_epi32(upperPart);
-
-   __m256i mergedVec = _mm256_loadu2_m128i(upperPart, lowerPart); //insert
-
-   return mm256_castsi256_ps(mergedVec);
-}
-
-static inline __m128i _mm_rotbyte_epi32(__m128i a) {
-   // ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
-   __m128i leftShifted = _mm_slli_epi32 (a, 0x08);
-   __m128i rightShifted = _mm_srli_epi32 (a, (DIGIT_SIZE_b - 8));
-
-   return _mm_or_si128(leftShifted, rightShifted);
-}
-
 static inline void get_64_coeff_vector(const DIGIT poly[],
                                        const __m256i first_exponent_vector,
                                        const __m256i *restrict __lowerResult,
@@ -588,16 +568,16 @@ for (int i = 0; i < N0; i++) {
          vecSyndBitsWordIdx < (DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B-1;
          vecSyndBitsWordIdx++){
 
-            for(int vecSyndBitsElemIdx = 0;
-               vecSyndBitsElemIdx < DIGIT_SIZE_B;
-               vecSyndBitsElemIdx++){
-                  POSITION_T tmp = HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B+vecSyndBitsElemIdx];
-                  /*note: the position will be the one of the lowest exponent in the bitvector */
-                  tmp += vectorIdx * DIGIT_SIZE_B;
-                  tmp = tmp >= P ? tmp - P : tmp;
-                  vecSyndBits[vecSyndBitsWordIdx] = ROTBYTE(vecSyndBits[vecSyndBitsWordIdx]);
-                  vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
-               }
+            // for(int vecSyndBitsElemIdx = 0;
+            //    vecSyndBitsElemIdx < DIGIT_SIZE_B;
+            //    vecSyndBitsElemIdx++){
+            //       POSITION_T tmp = HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B+vecSyndBitsElemIdx];
+            //       /*note: the position will be the one of the lowest exponent in the bitvector */
+            //       tmp += vectorIdx * DIGIT_SIZE_B;
+            //       tmp = tmp >= P ? tmp - P : tmp;
+            //       vecSyndBits[vecSyndBitsWordIdx] = ROTBYTE(vecSyndBits[vecSyndBitsWordIdx]);
+            //       vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
+            //    }
 
 #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
             // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
@@ -656,12 +636,9 @@ for (int i = 0; i < N0; i++) {
             // changed to tmp = P > tmp ? tmp : tmpResultOfSubtraction
             tmpReg = _mm256_blendv_ps (tmpResultOfSubtraction, _mm256_castsi256_ps(tmpReg), cmpMask);
 
+            __m256i lowerResult, upperResult;
 
-
-
-
-
-
+            get_64_coeff_vector(currSyndrome, tmpReg, &lowerResult, &upperResult);
 #endif // end of MMX to AVX2
 
          } // end for vecSyndBitsWordIdx
