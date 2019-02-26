@@ -81,7 +81,7 @@ static inline __m128i _mm_rotbyte_epi32(__m128i a) {
    return _mm_or_si128(leftShifted, rightShifted);
 }
 
-static inline __m64 get_64_coeff_vector(const DIGIT poly[], const __m256i first_exponent_vector) {
+static inline __m256i get_64_coeff_vector(const DIGIT poly[], const __m256i first_exponent_vector) {
 
 #ifdef HIGH_PERFORMANCE_X86_64
    __m256i addend       = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
