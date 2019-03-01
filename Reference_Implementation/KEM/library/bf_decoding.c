@@ -639,6 +639,8 @@ for (int i = 0; i < N0; i++) {
             __m256i lowerResult, upperResult;
 
             get_64_coeff_vector(currSyndrome, tmpReg, &lowerResult, &upperResult);
+            // Raccolgo gli ultimi 8 bit del risultato ma è in ordine inverso rispetto a prima (?)
+
 #endif // end of MMX to AVX2
 
          } // end for vecSyndBitsWordIdx
