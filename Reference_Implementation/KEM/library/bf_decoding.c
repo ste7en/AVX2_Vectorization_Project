@@ -40,7 +40,7 @@
 #define ROTUPC(a)   ( (a >> 8) | (a << (DIGIT_SIZE_b - 8)) )
 #define ROUND_UP(amount, round_amt) ( ((amount+round_amt-1)/round_amt)*round_amt )
 
-#define 64b_WORDS_IN_256b 4
+#define LONG_WORDS_IN_256b 4
 
 #if (DIGIT_MAX == UINT64_MAX)
 #define DIGIT_SIZE_b_EXPONENT 6
@@ -70,20 +70,20 @@ static inline __m256i _mm256_popcount_epi64(__m256i a) {
     */
    __m256i lookup =_mm256_setr_epi8(0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4);
    __m256i low_mask = _mm256_set1_epi8(0x0f);
-   __m256i lo = _mm256_and_si256(v, low_mask);
-   __m256i hi = _mm256_and_si256(_mm256_srli_epi32(v, 4), low_mask);
+   __m256i lo = _mm256_and_si256(a, low_mask);
+   __m256i hi = _mm256_and_si256(_mm256_srli_epi32(a, 4), low_mask);
    __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
    __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
    __m256i total = _mm256_add_epi8(popcnt1, popcnt2);
    return _mm256_sad_epu8(total, _mm256_setzero_si256());
 }
 
-static inline DIGIT _mm256_reduce_horizontally_add_epi64(__m256i) {
-   DIGIT *upcDigits  = calloc(64b_WORDS_IN_256b, sizeof(DIGIT));
+static inline DIGIT _mm256_reduce_horizontally_add_epi64(__m256i popcount) {
+   DIGIT *upcDigits  = calloc(LONG_WORDS_IN_256b, sizeof(DIGIT));
    DIGIT sum = 0;
    __m256i oneAll    = _mm256_set1_epi64x(0xFFFFFFFFFFFFFFFF);
    _mm256_maskstore_epi64(upcDigits, oneAll, popcount);
-   for (int j = 0; j < 64b_WORDS_IN_256b; j++) {
+   for (int j = 0; j < LONG_WORDS_IN_256b; j++) {
       sum += upcDigits[j];
    }
    free(upcDigits);
@@ -92,8 +92,8 @@ static inline DIGIT _mm256_reduce_horizontally_add_epi64(__m256i) {
 
 static inline void get_64_coeff_vector(const DIGIT poly[],
    const __m256i first_exponent_vector,
-   const __m256i *restrict __lowerResult,
-   const __m256i *restrict __upperResult
+   __m256i *restrict __lowerResult,
+   __m256i *restrict __upperResult
 )
 {
 
@@ -431,8 +431,8 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
          )
       );
       #else // P%DIGIT_SIZE_b >= 8
-      __m256i lowerResult;
-      __m256i upperResult;
+
+
 
       /* one-byte wide mask to perform extraction */
       // int excessMSb = inDigitIdx + 7 - ceiling_pos
@@ -443,9 +443,9 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
          ),
          ceiling_pos);
          // excessMSb = excessMSb < 0 ? 0 : excessMSb
-         __m256i conditionalMask = _mm256_cmpgt_epi32 (_mm256_setzero_si256, excessMSb);
+         __m256i conditionalMask = _mm256_cmpgt_epi32 (_mm256_setzero_si256(), excessMSb);
          excessMSb = _mm256_blendv_ps(
-            _mm256_castsi256_ps(_mm256_setzero_si256),
+            _mm256_castsi256_ps(_mm256_setzero_si256()),
             _mm256_castsi256_ps(excessMSb),
             _mm256_castsi256_ps(conditionalMask)
          );
@@ -464,25 +464,25 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
                   one_epi64
                )
             );
-            __m256i upperResult           = _mm256_and_si256 (
-               upperMsw,
-               _mm256_sub_epi64 (
-                  _mm256_sllv_epi64 (
-                     one_epi64,
-                     upperExcessMSb_epi64),
-                     one_epi64
-                  )
-               );
+         __m256i upperResult           = _mm256_and_si256 (
+            upperMsw,
+            _mm256_sub_epi64 (
+               _mm256_sllv_epi64 (
+                  one_epi64,
+                  upperExcessMSb_epi64),
+                  one_epi64
+               )
+            );
 
                // result = result << (8-excessMSb)
                lowerResult = _mm256_sllv_epi64 (
-                  lowerIntermediateResultIfFalse,
+                  lowerResult,
                   _mm256_sub_epi64 (
                      _mm256_set1_epi64x(8),
                      lowerExcessMSb_epi64 )
                   );
                   upperResult = _mm256_sllv_epi64 (
-                     upperIntermediateResultIfFalse,
+                     upperResult,
                      _mm256_sub_epi64 (
                         _mm256_set1_epi64x(8),
                         upperExcessMSb_epi64 )
@@ -526,9 +526,6 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
                         ) // end shift right
                      );
                      #endif // P%DIGIT_SIZE_b < 8
-
-                     #endif // AVX2
-
                      __asm__ __volatile__ (  "nop\n\t"
                                              "nop\n\t"
                                              "nop\n\t"
@@ -536,6 +533,7 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
 
                   *__lowerResult = lowerResult;
                   *__upperResult = upperResult;
+                     #endif // AVX2
                }
 /******************** END of functions' definitions for vector operations *************************/
 
@@ -673,8 +671,10 @@ for (int i = 0; i < N0; i++) {
             uint8_t *vecSyndBytes = &vecSyndBits[vecSyndBitsWordIdx];
             #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
             for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
-               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (lowerResult, byteCount);
-               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (upperResult, byteCount);
+               vecSyndBits[16-byteCount] = _mm256_extract_epi8 (lowerResult, byteCount);
+            }
+            for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
+               vecSyndBits[32-byteCount] = _mm256_extract_epi8 (upperResult, byteCount);
             }
             #else
             #endif
@@ -694,10 +694,10 @@ for (int i = 0; i < N0; i++) {
          //       vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
          //    }
 
-            POSITION_T _m256iAlignedHtrPosOnes[] = (POSITION_T*)calloc(DIGIT_SIZE_B, sizeof(POSITION_T));
-            _m256iAlignedHtrPosOnes = (POSITION_T*)memcpy(_m256iAlignedHtrPosOnes,
-                                             HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B],
-                                             sizeof(POSITION_T) * (DV % DIGIT_SIZE_B));
+            // POSITION_T m256iAlignedHtrPosOnes[] = (POSITION_T*)calloc(DIGIT_SIZE_B, sizeof(POSITION_T));
+            // m256iAlignedHtrPosOnes = (POSITION_T*)memcpy(m256iAlignedHtrPosOnes,
+            //                                  HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B],
+            //                                  sizeof(POSITION_T) * (DV % DIGIT_SIZE_B));
 
          #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
             // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
@@ -760,12 +760,16 @@ for (int i = 0; i < N0; i++) {
 
             get_64_coeff_vector(currSyndrome, tmpReg, &lowerResult, &upperResult);
             // Raccolgo gli ultimi 8 bit del risultato ma è in ordine inverso rispetto a prima (?)
+            uint8_t *vecSyndBytes = &vecSyndBits[vecSyndBitsWordIdx];
             #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
             for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
-               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (lowerResult, byteCount);
-               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (upperResult, byteCount);
+               vecSyndBits[16-byteCount] = _mm256_extract_epi8 (lowerResult, byteCount);
             }
-            #endif // endianess
+            for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
+               vecSyndBits[32-byteCount] = _mm256_extract_epi8 (upperResult, byteCount);
+            }
+            #else
+            #endif
 
          #endif // end of MMX to AVX2
 
@@ -778,7 +782,7 @@ for (int i = 0; i < N0; i++) {
       #ifdef HIGH_PERFORMANCE_X86_64 // AVX2
                __m256i oneAll    = _mm256_set1_epi64x(0xFFFFFFFFFFFFFFFF);
 
-               for(vecSyndBitsWordIdx = 0; vecSyndBitsWordIdx < ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B)/(64b_WORDS_IN_256b); vecSyndBitsWordIdx += 4) {
+               for(vecSyndBitsWordIdx = 0; vecSyndBitsWordIdx < ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B)/(LONG_WORDS_IN_256b); vecSyndBitsWordIdx += 4) {
                   __m256i synReg    = _mm256_castpd_si256(_mm256_loadu_pd ((double*)vecSyndBits[vecSyndBitsWordIdx]));
                   __m256i popcount  = _mm256_popcount_epi64(synReg);
 
@@ -786,11 +790,11 @@ for (int i = 0; i < N0; i++) {
                   synReg    = _mm256_srli_epi64 (synReg, 1);
                   _mm256_maskstore_epi64(&vecSyndBits[vecSyndBitsWordIdx], oneAll, synReg);
                }
-         #if ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % 64b_WORDS_IN_256b != 0
-               DIGIT *alignedSynVec = (DIGIT*) calloc(64b_WORDS_IN_256b, sizeof(DIGIT));
+         #if ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % LONG_WORDS_IN_256b != 0
+               DIGIT *alignedSynVec = (DIGIT*) calloc(LONG_WORDS_IN_256b, sizeof(DIGIT));
                alignedSynVec = (DIGIT*) memcpy( alignedSynVec,
-                                                synVec[vecSyndBitsWordIdx],
-                                                sizeof(DIGIT) * (((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % 64b_WORDS_IN_256b)
+                                                vecSyndBits[vecSyndBitsWordIdx],
+                                                sizeof(DIGIT) * (((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % LONG_WORDS_IN_256b)
                                              );
 
                __m256i synReg    = _mm256_maskload_epi64(alignedSynVec, oneAll);
@@ -800,10 +804,10 @@ for (int i = 0; i < N0; i++) {
 
                synReg    = _mm256_srli_epi64 (synReg, 1);   // synVec >> 1
                _mm256_maskstore_epi64(alignedSynVec, oneAll, synReg);
-               memcpy( &synVec[vecSyndBitsWordIdx], alignedSynVec, sizeof(DIGIT) * (((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % 64b_WORDS_IN_256b) );
+               memcpy( &vecSyndBits[vecSyndBitsWordIdx], alignedSynVec, sizeof(DIGIT) * (((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % LONG_WORDS_IN_256b) );
 
                free(alignedSynVec);
-         #endif // ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % 64b_WORDS_IN_256b != 0
+         #endif // ((DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B) % LONG_WORDS_IN_256b != 0
       #else
                for(vecSyndBitsWordIdx = 0; vecSyndBitsWordIdx < (DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B; vecSyndBitsWordIdx++){
                   DIGIT synVec = vecSyndBits[vecSyndBitsWordIdx];
