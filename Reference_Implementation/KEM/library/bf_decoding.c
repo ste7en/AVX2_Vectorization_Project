@@ -530,8 +530,8 @@ __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
                      #endif // AVX2
 
                      __asm__ __volatile__ (  "nop\n\t"
-                     "nop\n\t"
-                     "nop\n\t"
+                                             "nop\n\t"
+                                             "nop\n\t"
                   );
 
                   *__lowerResult = lowerResult;
@@ -608,7 +608,7 @@ for (int i = 0; i < N0; i++) {
             //       vecSyndBits[vecSyndBitsWordIdx] += gf2x_get_8_coeff_vector(currSyndrome,tmp);
             //    }
 
-            #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
+         #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
             // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
             __m256i tmpReg = _mm256_castps_si256(_mm256_loadu_ps((float*) &HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B]));
             __m256  cmpMask; // used in the conditional assignment
@@ -670,7 +670,16 @@ for (int i = 0; i < N0; i++) {
             get_64_coeff_vector(currSyndrome, tmpReg, &lowerResult, &upperResult);
             // Raccolgo gli ultimi 8 bit del risultato ma è in ordine inverso rispetto a prima (?)
 
-            #endif // end of MMX to AVX2
+            uint8_t *vecSyndBytes = &vecSyndBits[vecSyndBitsWordIdx];
+            #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+            for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
+               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (lowerResult, byteCount);
+               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (upperResult, byteCount);
+            }
+            #else
+            #endif
+
+         #endif // end of MMX to AVX2
 
          } // end for vecSyndBitsWordIdx
 
@@ -690,7 +699,7 @@ for (int i = 0; i < N0; i++) {
                                              HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B],
                                              sizeof(POSITION_T) * (DV % DIGIT_SIZE_B));
 
-            #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
+         #ifdef HIGH_COMPATIBILITY_X86_64 // MMX to AVX2
             // 8x uint32_t of HtrPosOnes[i] are loaded in a 256-bit vector unit as single precision float
             __m256i tmpReg = _mm256_castps_si256(_mm256_loadu_ps((float*) &HtrPosOnes[i][vecSyndBitsWordIdx*DIGIT_SIZE_B]));
             __m256  cmpMask; // used in the conditional assignment
@@ -751,8 +760,14 @@ for (int i = 0; i < N0; i++) {
 
             get_64_coeff_vector(currSyndrome, tmpReg, &lowerResult, &upperResult);
             // Raccolgo gli ultimi 8 bit del risultato ma è in ordine inverso rispetto a prima (?)
+            #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+            for(int byteCount = 0; byteCount <= 32; byteCount += 8) {
+               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (lowerResult, byteCount);
+               vecSyndBits[vecSyndBitsWordIdx] = _mm256_extract_epi8 (upperResult, byteCount);
+            }
+            #endif // endianess
 
-            #endif // end of MMX to AVX2
+         #endif // end of MMX to AVX2
 
 
 
