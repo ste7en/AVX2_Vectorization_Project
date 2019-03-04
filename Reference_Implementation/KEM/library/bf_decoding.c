@@ -91,11 +91,9 @@ static inline DIGIT _mm256_reduce_horizontally_add_epi64(__m256i popcount) {
 }
 
 static inline void get_64_coeff_vector(const DIGIT poly[],
-   const __m256i first_exponent_vector,
-   __m256i *restrict __lowerResult,
-   __m256i *restrict __upperResult
-)
-{
+                                       const __m256i first_exponent_vector,
+                                       __m256i *restrict __lowerResult,
+                                       __m256i *restrict __upperResult) {
 
    #ifdef HIGH_PERFORMANCE_X86_64
    __m256i addend       = _mm256_set1_epi32(NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1);
@@ -115,426 +113,424 @@ static inline void get_64_coeff_vector(const DIGIT poly[],
    __m256i msbPosInMSB  = _mm256_set1_epi32 (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT); // digitIdx == 0
    __m256i msValidBit   = _mm256_set1_epi32 (DIGIT_SIZE_b-1); // digitIdx != 0
    // I'm using digitIdx as mask
-   __m256i ceiling_pos  = _mm256_castps_si256( _mm256_blendv_ps (
-      _mm256_castsi256_ps(msbPosInMSB),
-      _mm256_castsi256_ps(msValidBit),
-      _mm256_castsi256_ps(digitIdx)
-   )
-);
+   __m256i ceiling_pos  =  _mm256_castps_si256( _mm256_blendv_ps (
+                                                   _mm256_castsi256_ps(msbPosInMSB),
+                                                   _mm256_castsi256_ps(msValidBit),
+                                                   _mm256_castsi256_ps(digitIdx)
+                                                )
+                                             );
 
-/* load word with wraparound */
-__m256i numDigitsElement   = _mm256_set1_epi32 (NUM_DIGITS_GF2X_ELEMENT-1);
-__m256i one_epi32          = _mm256_set1_epi32 (1);
-__m256i subtraction        = _mm256_sub_epi32  (digitIdx, one_epi32);
-/* Following a conditional assignment:
-*  digitIdx  = (digitIdx == 0) ? NUM_DIGITS_GF2X_ELEMENT-1 : digitIdx-1
-*/
-digitIdx = _mm256_castps_si256( _mm256_blendv_ps (
-   _mm256_castsi256_ps(numDigitsElement),
-   _mm256_castsi256_ps(subtraction),
-   _mm256_castsi256_ps(digitIdx)
-)
-);
+   /* load word with wraparound */
+   __m256i numDigitsElement   = _mm256_set1_epi32 (NUM_DIGITS_GF2X_ELEMENT-1);
+   __m256i one_epi32          = _mm256_set1_epi32 (1);
+   __m256i subtraction        = _mm256_sub_epi32  (digitIdx, one_epi32);
+   /* Following a conditional assignment:
+   *  digitIdx  = (digitIdx == 0) ? NUM_DIGITS_GF2X_ELEMENT-1 : digitIdx-1
+   */
+   digitIdx = _mm256_castps_si256( _mm256_blendv_ps (
+                                       _mm256_castsi256_ps(numDigitsElement),
+                                       _mm256_castsi256_ps(subtraction),
+                                       _mm256_castsi256_ps(digitIdx)
+                                       )
+                                 );
 
-// Gather operation to load 8x 64-bit digits in two registers
-lowerDigitIdx     = _mm256_extractf128i_lower (digitIdx);
-__m256i lowerMsw  = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
-upperDigitIdx     = _mm256_extractf128i_upper (digitIdx);
-__m256i upperMsw  = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+   // Gather operation to load 8x 64-bit digits in two registers
+   lowerDigitIdx     = _mm256_extractf128i_lower (digitIdx);
+   __m256i lowerMsw  = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+   upperDigitIdx     = _mm256_extractf128i_upper (digitIdx);
+   __m256i upperMsw  = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
 
-// semantically equivalent to inDigitIdx = DIGIT_SIZE_b-1-(straightIdx % DIGIT_SIZE_b)
-__m256i digitBits = _mm256_set1_epi32(DIGIT_SIZE_b-1);
-__m256i modulo    = _mm256_and_si256 (straightIdx, digitBits); // n % 2^i = n & (2^i - 1)
-__m256i inDigitIdx= _mm256_abs_epi32 (
-   _mm256_sub_epi32 (
-      _mm256_sub_epi32(digitBits, one_epi32),
-      modulo
-   )
-);
+   // semantically equivalent to inDigitIdx = DIGIT_SIZE_b-1-(straightIdx % DIGIT_SIZE_b)
+   __m256i digitBits = _mm256_set1_epi32(DIGIT_SIZE_b-1);
+   __m256i modulo    = _mm256_and_si256 (straightIdx, digitBits); // n % 2^i = n & (2^i - 1)
+   __m256i inDigitIdx= _mm256_abs_epi32 (
+      _mm256_sub_epi32 (
+         _mm256_sub_epi32(digitBits, one_epi32),
+         modulo
+      )
+   );
 
-// inDigitIdx is composed of 32-bit integers,
-// but I need 64-bit integers to compute the result
-__m128i lowerInDigitIdx = _mm256_extractf128i_lower(inDigitIdx);
-__m128i upperInDigitIdx = _mm256_extractf128i_upper(inDigitIdx);
+   // inDigitIdx is composed of 32-bit integers,
+   // but I need 64-bit integers to compute the result
+   __m128i lowerInDigitIdx = _mm256_extractf128i_lower(inDigitIdx);
+   __m128i upperInDigitIdx = _mm256_extractf128i_upper(inDigitIdx);
 
-__m256i lowerInDigitIdx_epi64 = _mm256_cvtepu32_epi64(lowerInDigitIdx);
-__m256i upperInDigitIdx_epi64 = _mm256_cvtepu32_epi64(upperInDigitIdx);
+   __m256i lowerInDigitIdx_epi64 = _mm256_cvtepu32_epi64(lowerInDigitIdx);
+   __m256i upperInDigitIdx_epi64 = _mm256_cvtepu32_epi64(upperInDigitIdx);
 
-#if P%DIGIT_SIZE_b < 32
-/* This case is managed to allow experimentation with parameter sets different
-* from the proposed ones.
-* It will yield a structural hindrance to constant time implementations*/
+   #if P%DIGIT_SIZE_b < 32
+   /* This case is managed to allow experimentation with parameter sets different
+   * from the proposed ones.
+   * It will yield a structural hindrance to constant time implementations*/
 
-// mask for the conditional assignment of result
-// if (digitIdx == 0 && 8 - (int)(DIGIT_SIZE_b-inDigitIdx) > (int)(P%DIGIT_SIZE_b))
-__m256i lowerDigitIdx_epi64   = _mm256_cvtepu32_epi64(lowerDigitIdx);
-__m256i upperDigitIdx_epi64   = _mm256_cvtepu32_epi64(upperDigitIdx);
+   // mask for the conditional assignment of result
+   // if (digitIdx == 0 && 8 - (int)(DIGIT_SIZE_b-inDigitIdx) > (int)(P%DIGIT_SIZE_b))
+   __m256i lowerDigitIdx_epi64   = _mm256_cvtepu32_epi64(lowerDigitIdx);
+   __m256i upperDigitIdx_epi64   = _mm256_cvtepu32_epi64(upperDigitIdx);
 
-__m256i lowerRightAndOperand  = _mm256_cmpgt_epi64 (
-   _mm256_sub_epi64 (
-      _mm256_set1_epi64x(8-DIGIT_SIZE_b),
+   __m256i lowerRightAndOperand  = _mm256_cmpgt_epi64 (
+      _mm256_sub_epi64 (
+         _mm256_set1_epi64x(8-DIGIT_SIZE_b),
+         lowerInDigitIdx_epi64
+      ),
+      _mm256_set1_epi64x(P%DIGIT_SIZE_b)
+   );
+   __m256i upperRightAndOperand  = _mm256_cmpgt_epi64 (
+      _mm256_sub_epi64 (
+         _mm256_set1_epi64x(8-DIGIT_SIZE_b),
+         upperInDigitIdx_epi64
+      ),
+      _mm256_set1_epi64x(P%DIGIT_SIZE_b)
+   );
+
+   __m256i lowerConditionalResultMask = _mm256_and_si256 (
+      _mm256_cmpeq_epi64 (
+         lowerDigitIdx_epi64,
+         _mm256_setzero_si256()
+      ),
+      lowerRightAndOperand
+   );
+   __m256i upperConditionalResultMask = _mm256_and_si256 (
+      _mm256_cmpeq_epi64 (
+         upperDigitIdx_epi64,
+         _mm256_setzero_si256()
+      ),
+      upperRightAndOperand
+   );
+   /*
+   *    Start of the logic true block of the if statement
+   */
+
+   // broadcasted value used to compute the conditional result
+   __m256i bottomw = _mm256_set1_epi64x (poly[NUM_DIGITS_GF2X_ELEMENT-1]);
+
+   // topmostBits = 8 - (P%DIGIT_SIZE_b) - (DIGIT_SIZE_b-inDigitIdx)
+   __m256i lowerTopmostBits   = _mm256_sub_epi64 (
+      _mm256_set1_epi64x (8 - (P%DIGIT_SIZE_b) - DIGIT_SIZE_b),
       lowerInDigitIdx_epi64
-   ),
-   _mm256_set1_epi64x(P%DIGIT_SIZE_b)
-);
-__m256i upperRightAndOperand  = _mm256_cmpgt_epi64 (
-   _mm256_sub_epi64 (
-      _mm256_set1_epi64x(8-DIGIT_SIZE_b),
+   );
+   __m256i upperTopmostBits   = _mm256_sub_epi64 (
+      _mm256_set1_epi64x (8 - (P%DIGIT_SIZE_b) - DIGIT_SIZE_b),
       upperInDigitIdx_epi64
-   ),
-   _mm256_set1_epi64x(P%DIGIT_SIZE_b)
-);
+   );
+   // result = bottomw & ( (((DIGIT) 1) << topmostBits) -1)
+   __m256i one_epi64          = _mm256_set1_epi64x (1);
 
-__m256i lowerConditionalResultMask = _mm256_and_si256 (
-   _mm256_cmpeq_epi64 (
-      lowerDigitIdx_epi64,
-      _mm256_setzero_si256()
-   ),
-   lowerRightAndOperand
-);
-__m256i upperConditionalResultMask = _mm256_and_si256 (
-   _mm256_cmpeq_epi64 (
-      upperDigitIdx_epi64,
-      _mm256_setzero_si256()
-   ),
-   upperRightAndOperand
-);
-/*
-*    Start of the logic true block of the if statement
-*/
+   __m256i lowerIntermediateResultIfTrue = _mm256_and_si256 (
+      bottomw,
+      _mm256_sub_epi64 (
+         _mm256_sll_epi64 (
+            one_epi64,
+            lowerTopmostBits
+         ),
+         one_epi64
+      )
+   );
+   __m256i upperIntermediateResultIfTrue = _mm256_and_si256 (
+      bottomw,
+      _mm256_sub_epi64 (
+         _mm256_sll_epi64 (
+            one_epi64,
+            upperTopmostBits
+         ),
+         one_epi64
+      )
+   );
+   // result = result << (P%DIGIT_SIZE_b)
+   lowerIntermediateResultIfTrue = _mm256_slli_epi64 (lowerIntermediateResultIfTrue, P%DIGIT_SIZE_b);
+   upperIntermediateResultIfTrue = _mm256_slli_epi64 (upperIntermediateResultIfTrue, P%DIGIT_SIZE_b);
 
-// broadcasted value used to compute the conditional result
-__m256i bottomw = _mm256_set1_epi64x (poly[NUM_DIGITS_GF2X_ELEMENT-1]);
+   // result |=  poly[0]
+   __m256i orOperand       = _mm256_set1_epi64x(poly[0]);
 
-// topmostBits = 8 - (P%DIGIT_SIZE_b) - (DIGIT_SIZE_b-inDigitIdx)
-__m256i lowerTopmostBits   = _mm256_sub_epi64 (
-   _mm256_set1_epi64x (8 - (P%DIGIT_SIZE_b) - DIGIT_SIZE_b),
-   lowerInDigitIdx_epi64
-);
-__m256i upperTopmostBits   = _mm256_sub_epi64 (
-   _mm256_set1_epi64x (8 - (P%DIGIT_SIZE_b) - DIGIT_SIZE_b),
-   upperInDigitIdx_epi64
-);
-// result = bottomw & ( (((DIGIT) 1) << topmostBits) -1)
-__m256i one_epi64          = _mm256_set1_epi64x (1);
+   lowerIntermediateResultIfTrue = _mm256_or_si256 (lowerIntermediateResultIfTrue, orOperand);
+   upperIntermediateResultIfTrue = _mm256_or_si256 (upperIntermediateResultIfTrue, orOperand);
 
-__m256i lowerIntermediateResultIfTrue = _mm256_and_si256 (
-   bottomw,
-   _mm256_sub_epi64 (
-      _mm256_sll_epi64 (
+   // result = result << (8-topmostBits-(P%DIGIT_SIZE_b))
+   __m256i lowerShiftOperand  = _mm256_sub_epi64(
+      _mm256_set1_epi64x(8-(P%DIGIT_SIZE_b)),
+      lowerTopmostBits
+   );
+   __m256i upperShiftOperand  = _mm256_sub_epi64(
+      _mm256_set1_epi64x(8-(P%DIGIT_SIZE_b)),
+      upperTopmostBits
+   );
+   lowerIntermediateResultIfTrue    = _mm256_sllv_epi64 (lowerIntermediateResultIfTrue, lowerShiftOperand);
+   upperIntermediateResultIfTrue    = _mm256_sllv_epi64 (upperIntermediateResultIfTrue, upperShiftOperand);
+
+   // DIGIT vectorExtractionMask = (1 << (8-topmostBits-(P%DIGIT_SIZE_b)))-1
+   __m256i lowerVectorExtractionMask = _mm256_sub_epi64(
+      _mm256_sllv_epi64(
          one_epi64,
-         lowerTopmostBits
+         lowerShiftOperand
       ),
       one_epi64
-   )
-);
-__m256i upperIntermediateResultIfTrue = _mm256_and_si256 (
-   bottomw,
-   _mm256_sub_epi64 (
-      _mm256_sll_epi64 (
+   );
+   __m256i upperVectorExtractionMask = _mm256_sub_epi64(
+      _mm256_sllv_epi64(
          one_epi64,
-         upperTopmostBits
+         upperShiftOperand
       ),
       one_epi64
-   )
-);
-// result = result << (P%DIGIT_SIZE_b)
-lowerIntermediateResultIfTrue = _mm256_slli_epi64 (lowerIntermediateResultIfTrue, P%DIGIT_SIZE_b);
-upperIntermediateResultIfTrue = _mm256_slli_epi64 (upperIntermediateResultIfTrue, P%DIGIT_SIZE_b);
+   );
 
-// result |=  poly[0]
-__m256i orOperand       = _mm256_set1_epi64x(poly[0]);
-
-lowerIntermediateResultIfTrue = _mm256_or_si256 (lowerIntermediateResultIfTrue, orOperand);
-upperIntermediateResultIfTrue = _mm256_or_si256 (upperIntermediateResultIfTrue, orOperand);
-
-// result = result << (8-topmostBits-(P%DIGIT_SIZE_b))
-__m256i lowerShiftOperand  = _mm256_sub_epi64(
-   _mm256_set1_epi64x(8-(P%DIGIT_SIZE_b)),
-   lowerTopmostBits
-);
-__m256i upperShiftOperand  = _mm256_sub_epi64(
-   _mm256_set1_epi64x(8-(P%DIGIT_SIZE_b)),
-   upperTopmostBits
-);
-lowerIntermediateResultIfTrue    = _mm256_sllv_epi64 (lowerIntermediateResultIfTrue, lowerShiftOperand);
-upperIntermediateResultIfTrue    = _mm256_sllv_epi64 (upperIntermediateResultIfTrue, upperShiftOperand);
-
-// DIGIT vectorExtractionMask = (1 << (8-topmostBits-(P%DIGIT_SIZE_b)))-1
-__m256i lowerVectorExtractionMask = _mm256_sub_epi64(
-   _mm256_sllv_epi64(
-      one_epi64,
-      lowerShiftOperand
-   ),
-   one_epi64
-);
-__m256i upperVectorExtractionMask = _mm256_sub_epi64(
-   _mm256_sllv_epi64(
-      one_epi64,
-      upperShiftOperand
-   ),
-   one_epi64
-);
-
-// vectorExtractionMask = vectorExtractionMask << (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b)))
-__m256i digitSizeBit = _mm256_set1_epi64x(DIGIT_SIZE_b);
-lowerVectorExtractionMask = _mm256_sllv_epi64(
-   lowerVectorExtractionMask,
-   _mm256_sub_epi64(
-      digitSizeBit,
-      lowerShiftOperand
-   )
-);
-upperVectorExtractionMask = _mm256_sllv_epi64(
-   upperVectorExtractionMask,
-   _mm256_sub_epi64(
-      digitSizeBit,
-      upperShiftOperand
-   )
-);
-
-// result |= ( (poly[1]  & vectorExtractionMask) >> (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b))) )
-lowerIntermediateResultIfTrue =  _mm256_or_si256(
-   _mm256_srlv_epi64 (
-      _mm256_and_si256 (
-         _mm256_set1_epi64x(poly[1]),
-         lowerVectorExtractionMask
-      ),
+   // vectorExtractionMask = vectorExtractionMask << (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b)))
+   __m256i digitSizeBit = _mm256_set1_epi64x(DIGIT_SIZE_b);
+   lowerVectorExtractionMask = _mm256_sllv_epi64(
+      lowerVectorExtractionMask,
       _mm256_sub_epi64(
          digitSizeBit,
          lowerShiftOperand
       )
-   ),
-   lowerIntermediateResultIfTrue
-);
-upperIntermediateResultIfTrue = _mm256_or_si256(
-   _mm256_srlv_epi64 (
-      _mm256_and_si256 (
-         _mm256_set1_epi64x(poly[1]),
-         upperVectorExtractionMask
-      ),
+   );
+   upperVectorExtractionMask = _mm256_sllv_epi64(
+      upperVectorExtractionMask,
       _mm256_sub_epi64(
          digitSizeBit,
          upperShiftOperand
       )
-   ),
-   upperIntermediateResultIfTrue
-);
-/*
-*    Start of the logic false block of the if statement (else)
-*/
-
-// int excessMSb = inDigitIdx + 7 - ceiling_pos
-__m256i excessMSb       = _mm256_sub_epi32(
-   _mm256_add_epi32(
-      inDigitIdx,
-      _mm256_set1_epi32(7)
-   ),
-   ceiling_pos
-);
-// excessMSb = excessMSb < 0 ? 0 : excessMSb
-__m256i zero            = _mm256_setzero_si256 ();
-__m256i conditionalMask = _mm256_cmpgt_epi32 (zero, excessMSb);
-excessMSb               = _mm256_castps_si256 ( _mm256_blendv_ps (
-   _mm256_castsi256_ps(excessMSb),
-   _mm256_castsi256_ps(zero),
-   _mm256_castsi256_ps(conditionalMask)
-)
-);
-
-// result = msw & ( (((DIGIT) 1) << excessMSb) -1)
-__m256i lowerExcessMSb_epi64 = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_lower(excessMSb) );
-__m256i upperExcessMSb_epi64 = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_upper(excessMSb) );
-__m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
-   lowerMsw,
-   _mm256_sub_epi64 (
-      _mm256_sllv_epi64 (
-         one_epi64,
-         lowerExcessMSb_epi64),
-         one_epi64
-      )
    );
-   __m256i upperIntermediateResultIfFalse = _mm256_and_si256 (
-      upperMsw,
-      _mm256_sub_epi64 (
-         _mm256_sllv_epi64 (
-            one_epi64,
-            upperExcessMSb_epi64),
-            one_epi64
+
+   // result |= ( (poly[1]  & vectorExtractionMask) >> (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b))) )
+   lowerIntermediateResultIfTrue =  _mm256_or_si256(
+      _mm256_srlv_epi64 (
+         _mm256_and_si256 (
+            _mm256_set1_epi64x(poly[1]),
+            lowerVectorExtractionMask
+         ),
+         _mm256_sub_epi64(
+            digitSizeBit,
+            lowerShiftOperand
          )
-      );
+      ),
+      lowerIntermediateResultIfTrue
+   );
+   upperIntermediateResultIfTrue = _mm256_or_si256(
+      _mm256_srlv_epi64 (
+         _mm256_and_si256 (
+            _mm256_set1_epi64x(poly[1]),
+            upperVectorExtractionMask
+         ),
+         _mm256_sub_epi64(
+            digitSizeBit,
+            upperShiftOperand
+         )
+      ),
+      upperIntermediateResultIfTrue
+   );
+   /*
+   *    Start of the logic false block of the if statement (else)
+   */
+
+   // int excessMSb = inDigitIdx + 7 - ceiling_pos
+   __m256i excessMSb       = _mm256_sub_epi32(
+      _mm256_add_epi32(
+         inDigitIdx,
+         _mm256_set1_epi32(7)
+      ),
+      ceiling_pos
+   );
+   // excessMSb = excessMSb < 0 ? 0 : excessMSb
+   __m256i zero            = _mm256_setzero_si256 ();
+   __m256i conditionalMask = _mm256_cmpgt_epi32 (zero, excessMSb);
+   excessMSb               = _mm256_castps_si256 ( _mm256_blendv_ps (
+      _mm256_castsi256_ps(excessMSb),
+      _mm256_castsi256_ps(zero),
+      _mm256_castsi256_ps(conditionalMask)
+   )
+   );
+
+   // result = msw & ( (((DIGIT) 1) << excessMSb) -1)
+   __m256i lowerExcessMSb_epi64 = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_lower(excessMSb) );
+   __m256i upperExcessMSb_epi64 = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_upper(excessMSb) );
+   __m256i lowerIntermediateResultIfFalse = _mm256_and_si256 (
+                                                               lowerMsw,
+                                                               _mm256_sub_epi64 (
+                                                                  _mm256_sllv_epi64 (
+                                                                     one_epi64,
+                                                                     lowerExcessMSb_epi64),
+                                                                     one_epi64
+                                                                  )
+                                                               );
+   __m256i upperIntermediateResultIfFalse = _mm256_and_si256 (
+                                                               upperMsw,
+                                                               _mm256_sub_epi64 (
+                                                                  _mm256_sllv_epi64 (
+                                                                     one_epi64,
+                                                                     upperExcessMSb_epi64),
+                                                                     one_epi64
+                                                                  )
+                                                               );
 
       // result = result << (8-excessMSb)
       lowerIntermediateResultIfFalse = _mm256_sllv_epi64 (
-         lowerIntermediateResultIfFalse,
-         _mm256_sub_epi64 (
-            _mm256_set1_epi64x(8),
-            lowerExcessMSb_epi64 )
-         );
+                                                         lowerIntermediateResultIfFalse,
+                                                         _mm256_sub_epi64 (
+                                                            _mm256_set1_epi64x(8),
+                                                            lowerExcessMSb_epi64 )
+                                                         );
          upperIntermediateResultIfFalse = _mm256_sllv_epi64 (
-            upperIntermediateResultIfFalse,
-            _mm256_sub_epi64 (
-               _mm256_set1_epi64x(8),
-               upperExcessMSb_epi64 )
-            );
+                                                            upperIntermediateResultIfFalse,
+                                                            _mm256_sub_epi64 (
+                                                               _mm256_set1_epi64x(8),
+                                                               upperExcessMSb_epi64 )
+                                                            );
 
             /*no specialization needed as the slack bits are kept clear */
             // DIGIT vectorExtractionMask = (1 << 8) -1;
             vectorExtractionMask = _mm256_sub_epi64 (
-               _mm256_sllv_epi64 (
-                  one_epi64,
-                  _mm256_set1_epi64x(8)
-               ),
-               _mm256_set1_epi64x(1)
-            );
+                                                      _mm256_sllv_epi64 (
+                                                         one_epi64,
+                                                         _mm256_set1_epi64x(8)
+                                                      ),
+                                                      _mm256_set1_epi64x(1)
+                                                   );
 
             // result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
             lowerIntermediateResultIfFalse = _mm256_or_si256 (
-               lowerIntermediateResultIfFalse,
-               _mm256_srlv_epi64 (
-                  _mm256_and_si256 (
-                     lowerLsw,
-                     _mm256_sllv_epi64(
-                        vectorExtractionMask,
-                        lowerInDigitIdx_epi64
-                     ) // end shift left
-                  ),
-                  lowerInDigitIdx_epi64
-               ) // end shift right
-            );
+                                                               lowerIntermediateResultIfFalse,
+                                                               _mm256_srlv_epi64 (
+                                                                  _mm256_and_si256 (
+                                                                     lowerLsw,
+                                                                     _mm256_sllv_epi64(
+                                                                        vectorExtractionMask,
+                                                                        lowerInDigitIdx_epi64
+                                                                     ) // end shift left
+                                                                  ),
+                                                                  lowerInDigitIdx_epi64
+                                                               ) // end shift right
+                                                            );
             upperIntermediateResultIfFalse = _mm256_or_si256 (
-               upperIntermediateResultIfFalse,
-               _mm256_srlv_epi64 (
-                  _mm256_and_si256 (
-                     upperLsw,
-                     _mm256_sllv_epi64(
-                        vectorExtractionMask,
-                        upperInDigitIdx_epi64
-                     ) // end shift left
-                  ),
-                  upperInDigitIdx_epi64
-               ) // end shift right
-            );
+                                                               upperIntermediateResultIfFalse,
+                                                               _mm256_srlv_epi64 (
+                                                                  _mm256_and_si256 (
+                                                                     upperLsw,
+                                                                     _mm256_sllv_epi64(
+                                                                        vectorExtractionMask,
+                                                                        upperInDigitIdx_epi64
+                                                                     ) // end shift left
+                                                                  ),
+                                                                  upperInDigitIdx_epi64
+                                                               ) // end shift right
+                                                            );
 
             // Conditional assignment of lower and upper result
 
             __m256i lowerResult = _mm256_castpd_si256 ( _mm256_blendv_pd (
-               _mm256_castsi256_pd (lowerIntermediateResultIfFalse),
-               _mm256_castsi256_pd (lowerIntermediateResultIfTrue),
-               _mm256_castsi256_pd (lowerConditionalResultMask)
-            )
-         );
+                                                            _mm256_castsi256_pd (lowerIntermediateResultIfFalse),
+                                                            _mm256_castsi256_pd (lowerIntermediateResultIfTrue),
+                                                            _mm256_castsi256_pd (lowerConditionalResultMask)
+                                                         )
+                                                      );
          __m256i upperResult = _mm256_castpd_si256 ( _mm256_blendv_pd (
-            _mm256_castsi256_pd (upperIntermediateResultIfFalse),
-            _mm256_castsi256_pd (upperIntermediateResultIfTrue),
-            _mm256_castsi256_pd (upperConditionalResultMask)
-         )
-      );
-      #else // P%DIGIT_SIZE_b >= 8
-
-
+                                                            _mm256_castsi256_pd (upperIntermediateResultIfFalse),
+                                                            _mm256_castsi256_pd (upperIntermediateResultIfTrue),
+                                                            _mm256_castsi256_pd (upperConditionalResultMask)
+                                                         )
+                                                      );
+   #else // P%DIGIT_SIZE_b >= 8
 
       /* one-byte wide mask to perform extraction */
       // int excessMSb = inDigitIdx + 7 - ceiling_pos
       __m256i excessMSb = _mm256_sub_epi32 (
-         _mm256_add_epi32 (
-            inDigitIdx,
-            _mm256_set1_epi32 (7)
-         ),
-         ceiling_pos);
-         // excessMSb = excessMSb < 0 ? 0 : excessMSb
-         __m256i conditionalMask = _mm256_cmpgt_epi32 (_mm256_setzero_si256(), excessMSb);
-         excessMSb = _mm256_blendv_ps(
-            _mm256_castsi256_ps(_mm256_setzero_si256()),
-            _mm256_castsi256_ps(excessMSb),
-            _mm256_castsi256_ps(conditionalMask)
-         );
+                                             _mm256_add_epi32 (
+                                                inDigitIdx,
+                                                _mm256_set1_epi32 (7)
+                                             ),
+                                             ceiling_pos);
+      // excessMSb = excessMSb < 0 ? 0 : excessMSb
+      __m256i conditionalMask = _mm256_cmpgt_epi32 (_mm256_setzero_si256(), excessMSb);
+      excessMSb = _mm256_blendv_ps(
+                                    _mm256_castsi256_ps(_mm256_setzero_si256()),
+                                    _mm256_castsi256_ps(excessMSb),
+                                    _mm256_castsi256_ps(conditionalMask)
+                                 );
 
-         // result = msw & ( (((DIGIT) 1) << excessMSb) -1)
-         __m256i one_epi64             = _mm256_set1_epi64x (1);
-         __m256i lowerExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_lower(excessMSb) );
-         __m256i upperExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_upper(excessMSb) );
+      // result = msw & ( (((DIGIT) 1) << excessMSb) -1)
+      __m256i one_epi64             = _mm256_set1_epi64x (1);
+      __m256i lowerExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_lower(excessMSb) );
+      __m256i upperExcessMSb_epi64  = _mm256_cvtepu32_epi64 ( _mm256_extractf128i_upper(excessMSb) );
 
-         __m256i lowerResult           = _mm256_and_si256 (
-            lowerMsw,
-            _mm256_sub_epi64 (
-               _mm256_sllv_epi64 (
-                  one_epi64,
-                  lowerExcessMSb_epi64),
-                  one_epi64
-               )
-            );
-         __m256i upperResult           = _mm256_and_si256 (
-            upperMsw,
-            _mm256_sub_epi64 (
-               _mm256_sllv_epi64 (
-                  one_epi64,
-                  upperExcessMSb_epi64),
-                  one_epi64
-               )
-            );
+      __m256i lowerResult           = _mm256_and_si256 (
+                                                         lowerMsw,
+                                                         _mm256_sub_epi64 (
+                                                            _mm256_sllv_epi64 (
+                                                               one_epi64,
+                                                               lowerExcessMSb_epi64),
+                                                               one_epi64
+                                                            )
+                                                         );
+      __m256i upperResult           = _mm256_and_si256 (
+                                                         upperMsw,
+                                                         _mm256_sub_epi64 (
+                                                            _mm256_sllv_epi64 (
+                                                               one_epi64,
+                                                               upperExcessMSb_epi64),
+                                                               one_epi64
+                                                            )
+                                                         );
 
-               // result = result << (8-excessMSb)
-               lowerResult = _mm256_sllv_epi64 (
-                  lowerResult,
-                  _mm256_sub_epi64 (
-                     _mm256_set1_epi64x(8),
-                     lowerExcessMSb_epi64 )
-                  );
-                  upperResult = _mm256_sllv_epi64 (
-                     upperResult,
-                     _mm256_sub_epi64 (
-                        _mm256_set1_epi64x(8),
-                        upperExcessMSb_epi64 )
-                     );
+      // result = result << (8-excessMSb)
+      lowerResult = _mm256_sllv_epi64 (
+                                       lowerResult,
+                                       _mm256_sub_epi64 (
+                                          _mm256_set1_epi64x(8),
+                                          lowerExcessMSb_epi64 )
+                                       );
+      upperResult = _mm256_sllv_epi64 (
+                                       upperResult,
+                                       _mm256_sub_epi64 (
+                                          _mm256_set1_epi64x(8),
+                                          upperExcessMSb_epi64 )
+                                       );
 
-                     /*no specialization needed as the slack bits are kept clear */
-                     // DIGIT vectorExtractionMask = (1 << 8) -1;
-                     __m256i vectorExtractionMask = _mm256_sub_epi64 (
-                        _mm256_sllv_epi64 (
-                           one_epi64,
-                           _mm256_set1_epi64x(8)
-                        ),
-                        _mm256_set1_epi64x(1)
-                     );
+      /*no specialization needed as the slack bits are kept clear */
+      // DIGIT vectorExtractionMask = (1 << 8) -1;
+      __m256i vectorExtractionMask = _mm256_sub_epi64 (
+                                                         _mm256_sllv_epi64 (
+                                                            one_epi64,
+                                                            _mm256_set1_epi64x(8)
+                                                         ),
+                                                         _mm256_set1_epi64x(1)
+                                                      );
 
-                     // result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
-                     lowerResult = _mm256_or_si256 (
-                        lowerResult,
-                        _mm256_srlv_epi64 (
-                           _mm256_and_si256 (
-                              lowerLsw,
-                              _mm256_sllv_epi64(
-                                 vectorExtractionMask,
-                                 lowerInDigitIdx_epi64
-                              ) // end shift left
-                           ),
-                           lowerInDigitIdx_epi64
-                        ) // end shift right
-                     );
-                     upperResult = _mm256_or_si256 (
-                        upperResult,
-                        _mm256_srlv_epi64 (
-                           _mm256_and_si256 (
-                              upperLsw,
-                              _mm256_sllv_epi64(
-                                 vectorExtractionMask,
-                                 upperInDigitIdx_epi64
-                              ) // end shift left
-                           ),
-                           upperInDigitIdx_epi64
-                        ) // end shift right
-                     );
-                     #endif // P%DIGIT_SIZE_b < 8
-                     __asm__ __volatile__ (  "nop\n\t"
-                                             "nop\n\t"
-                                             "nop\n\t"
-                  );
+      // result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
+      lowerResult = _mm256_or_si256 (
+                                       lowerResult,
+                                       _mm256_srlv_epi64 (
+                                          _mm256_and_si256 (
+                                             lowerLsw,
+                                             _mm256_sllv_epi64(
+                                                vectorExtractionMask,
+                                                lowerInDigitIdx_epi64
+                                             ) // end shift left
+                                          ),
+                                          lowerInDigitIdx_epi64
+                                       ) // end shift right
+                                    );
+      upperResult = _mm256_or_si256 (
+                                       upperResult,
+                                       _mm256_srlv_epi64 (
+                                          _mm256_and_si256 (
+                                             upperLsw,
+                                             _mm256_sllv_epi64(
+                                                vectorExtractionMask,
+                                                upperInDigitIdx_epi64
+                                             ) // end shift left
+                                          ),
+                                          upperInDigitIdx_epi64
+                                       ) // end shift right
+                                    );
+      #endif // P%DIGIT_SIZE_b < 8
+      __asm__ __volatile__ (  "nop\n\t"
+                              "nop\n\t"
+                              "nop\n\t"
+                           );
 
-                  *__lowerResult = lowerResult;
-                  *__upperResult = upperResult;
-                     #endif // AVX2
-               }
+      *__lowerResult = lowerResult;
+      *__upperResult = upperResult;
+   #endif // AVX2
+}
 /******************** END of functions' definitions for vector operations *************************/
 
 int bf_decoding(DIGIT out[], // N0 polynomials
