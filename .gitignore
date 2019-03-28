@@ -169,3 +169,5 @@ Temporary Items
 .apdisk
 
 # End of https://www.gitignore.io/api/c,macos,clion+all
+
+Reference_Implementation/KEM/CMakeFiles/clion-log\.txt
