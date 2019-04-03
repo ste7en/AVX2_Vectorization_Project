@@ -2,7 +2,7 @@
 #include "qc_ldpc_parameters.h"
 #include "gf2x_limbs.h"
 
-#if DV % DIGIT_SIZE_B == 0
+#if   DV % DIGIT_SIZE_B == 0
 #define REM_PADD_IMM8_L 0x0
 #define REM_PADD_IMM8_H 0x0
 

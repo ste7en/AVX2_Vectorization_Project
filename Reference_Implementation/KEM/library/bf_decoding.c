@@ -136,11 +136,11 @@ static inline void get_64_coeff_vector(const DIGIT poly[],
    __m256i digitBits = _mm256_set1_epi32(DIGIT_SIZE_b-1);
    __m256i modulo    = _mm256_and_si256 (straightIdx, digitBits); // n % 2^i = n & (2^i - 1)
    __m256i inDigitIdx= _mm256_abs_epi32 (
-      _mm256_sub_epi32 (
-         _mm256_sub_epi32(digitBits, one_epi32),
-         modulo
-      )
-   );
+                           _mm256_sub_epi32 (
+                              _mm256_sub_epi32(digitBits, one_epi32),
+                              modulo
+                           )
+                        );
 
    // inDigitIdx is composed of 32-bit integers,
    // but I need 64-bit integers to compute the result
@@ -780,7 +780,7 @@ for (int i = 0; i < N0; i++) {
                __m256i  tempHSum = _mm256_add_epi64 (vecUpcDigit, _mm256_permute4x64_epi64 (vecUpcDigit, 0x1B));
                         tempHSum = _mm256_add_epi64 (tempHSum, _mm256_permute4x64_epi64 (tempHSum, 0xE5));
                // the lowest 64b integer of tempHSum is the value of upcDigit
-               upcDigit = _mm256_extract_epi64 (tempHSum, 0x00);
+               upcDigit = _mm256_extract_epi64 (tempHSum, 0x00ULL);
 
       #else
                for(vecSyndBitsWordIdx = 0; vecSyndBitsWordIdx < (DV+DIGIT_SIZE_B-1)/DIGIT_SIZE_B; vecSyndBitsWordIdx++){
@@ -793,6 +793,7 @@ for (int i = 0; i < N0; i++) {
 
       #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
                upcVec |= upcDigit << (8* (vecElem) );
+
       #else
                upcVec |= upcDigit << (8* (7-vecElem) );
       #endif
