@@ -11,7 +11,7 @@
 
   REFERENCE_IMPL_PATH = ../../../Reference_Implementation/KEM
 
-  CFLAGS = -DCPU_WORD_BITS=64 -std=c99 -Wall -g -pedantic -Wmaybe-uninitialized -Wuninitialized -funroll-loops -O3 -march=core-avx2
+  CFLAGS = -DCPU_WORD_BITS=64 -std=c99 -Wall -g -pedantic -Wmaybe-uninitialized -Wuninitialized -funroll-loops -O3 -march=native
   LDFLAGS = -lm
   INCLUDES = -I./include -I$(REFERENCE_IMPL_PATH)/include
   SRCDIR_MAIN_FILE = library
