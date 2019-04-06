@@ -2,9 +2,9 @@
  *
  * <gf2x_arith_mod_xPplusOne.h>
  *
- * @version 1.0 (September 2017)
+ * @version 2.0 (March 2019)
  *
- * Reference ISO-C99 Implementation of LEDAkem cipher" using GCC built-ins.
+ * Reference ISO-C11 Implementation of the LEDAcrypt KEM cipher using GCC built-ins.
  *
  * In alphabetical order:
  *
@@ -92,20 +92,11 @@
 
 /*----------------------------------------------------------------------------*/
 
-
-
-/*----------------------------------------------------------------------------*/
-
 static inline void gf2x_copy(DIGIT dest[], const DIGIT in[])
 {
    for (int i = NUM_DIGITS_GF2X_ELEMENT-1; i >= 0; i--)
       dest[i] = in[i];
 } // end gf2x_copy
-
-/*---------------------------------------------------------------------------*/
-
-void gf2x_mod(DIGIT out[],
-              const int nin, const DIGIT in[]); /* out(x) = in(x) mod x^P+1  */
 
 /*---------------------------------------------------------------------------*/
 
@@ -122,42 +113,9 @@ static inline void gf2x_mod_add(DIGIT Res[], const DIGIT A[], const DIGIT B[])
 
 /*----------------------------------------------------------------------------*/
 
-/*
- * Optimized extended GCD algorithm to compute the multiplicative inverse of
- * a non-zero element in GF(2)[x] mod x^P+1, in polyn. representation.
- *
- * H. Brunner, A. Curiger, and M. Hofstetter. 1993.
- * On Computing Multiplicative Inverses in GF(2^m).
- * IEEE Trans. Comput. 42, 8 (August 1993), 1010-1015.
- * DOI=http://dx.doi.org/10.1109/12.238496
- *
- *
- * Henri Cohen, Gerhard Frey, Roberto Avanzi, Christophe Doche, Tanja Lange,
- * Kim Nguyen, and Frederik Vercauteren. 2012.
- * Handbook of Elliptic and Hyperelliptic Curve Cryptography,
- * Second Edition (2nd ed.). Chapman & Hall/CRC.
- * (Chapter 11 -- Algorithm 11.44 -- pag 223)
- *
- */
-int gf2x_mod_inverse_HAC(DIGIT out[], const DIGIT in[]);
-int gf2x_mod_inverse(DIGIT out[], const DIGIT in[]);/* ret. 1 if inv. exists */
-
-/*---------------------------------------------------------------------------*/
-
 void gf2x_transpose_in_place(DIGIT
                              A[]); /* in place bit-transp. of a(x) % x^P+1  *
                                       * e.g.: a3 a2 a1 a0 --> a1 a2 a3 a0     */
-
-/*---------------------------------------------------------------------------*/
-
-static inline void gf2x_bitwise_and(DIGIT *const restrict OUT,
-                                    const DIGIT *const restrict A,
-                                    const DIGIT *const restrict B)
-{
-   for(int i = NUM_DIGITS_GF2X_ELEMENT - 1; i >= 0; i--) {
-      OUT[i] = A[i] & B[i];
-   }
-} // end gf2x_bitwise_and
 
 /*---------------------------------------------------------------------------*/
 
@@ -188,72 +146,22 @@ with this CPU word bitsize !!! "
 /*--------------------------------------------------------------------------*/
 
 /* returns a packed representation of the bits corresponding to the coefficients
- * of the range first_exponent to first_exponent+7 mod P*/
+ * of the range first_exponent to first_exponent+DIGIT_SIZE_b mod P. Does load 
+ * cyclically when the coefficients exceed P. Assumes cyclic padding with enough
+ * bit material after P in the MSW of the poly. poly is NUM_DIGITS_GF2X_ELEMENT+1 DIGITS
+ * long */
 
-#include <stdio.h>
-#include <stdlib.h>
 static inline
-DIGIT gf2x_get_8_coeff_vector(const DIGIT poly[], const unsigned int first_exponent)
+DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsigned int first_exponent)
 {
-   /* ctime execution requires the op to load always two words : pick the one of
-    * base exponent and the "following" one */
-   unsigned int straightIdx = (NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b-1) - first_exponent;
+
+   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
    DIGIT lsw = poly[digitIdx];
+   DIGIT msw = poly[digitIdx-1];
+   unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
 
-   /*the most significant valid bit in the lsw is always the 63rd, save for the case
-    * where digitIdx is 0. In that case the slack bits are cut off, and the extraction
-    * mask for the first word should be adjusted accordingly */
-   int ceiling_pos;
-   if (digitIdx == 0){
-       ceiling_pos = MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT; /* 4 */
-   } else{
-       ceiling_pos = DIGIT_SIZE_b-1;
-   }
-
-   /* load word with wraparound */
-   digitIdx  = (digitIdx == 0) ? NUM_DIGITS_GF2X_ELEMENT-1 : digitIdx-1;
-   DIGIT msw = poly[digitIdx];
-   unsigned int inDigitIdx = DIGIT_SIZE_b-1-(straightIdx % DIGIT_SIZE_b);
-
-#if P%DIGIT_SIZE_b < 8
-/* This case is managed to allow experimentation with parameter sets different
- * from the proposed ones.
- * It will yield a structural hindrance to constant time implementations*/
-   DIGIT result = 0;
-
-   if (digitIdx == 0 && 8 - (int)(DIGIT_SIZE_b-inDigitIdx) > (int)(P%DIGIT_SIZE_b)){
-     DIGIT bottomw = poly[NUM_DIGITS_GF2X_ELEMENT-1];
-     int topmostBits = 8 - (P%DIGIT_SIZE_b) - (DIGIT_SIZE_b-inDigitIdx);
-     result = bottomw & ( (((DIGIT) 1) << topmostBits) -1);
-     result = result << (P%DIGIT_SIZE_b);
-     result |=  poly[0];
-     result = result << (8-topmostBits-(P%DIGIT_SIZE_b));
-     DIGIT vectorExtractionMask = (1 << (8-topmostBits-(P%DIGIT_SIZE_b)))-1;
-     vectorExtractionMask = vectorExtractionMask << (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b)));
-     result |= ( (poly[1]  & vectorExtractionMask) >> (DIGIT_SIZE_b - (8-topmostBits-(P%DIGIT_SIZE_b))) );
-   } else {
-   int excessMSb = inDigitIdx + 7 - ceiling_pos;
-   excessMSb = excessMSb < 0 ? 0 : excessMSb;
-
-   result = msw & ( (((DIGIT) 1) << excessMSb) -1);
-   result = result << (8-excessMSb);
-   /*no specialization needed as the slack bits are kept clear */
-   DIGIT vectorExtractionMask = (1 << 8) -1;
-   result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
-   }
-#else
-   DIGIT result = 0;
-   /* one-byte wide mask to perform extraction */
-   int excessMSb = inDigitIdx + 7 - ceiling_pos;
-   excessMSb = excessMSb < 0 ? 0 : excessMSb;
-
-   result = msw & ( (((DIGIT) 1) << excessMSb) -1);
-   result = result << (8-excessMSb);
-   /*no specialization needed as the slack bits are kept clear */
-   DIGIT vectorExtractionMask = (1 << 8) -1;
-   result |= (lsw & (vectorExtractionMask << inDigitIdx)) >> inDigitIdx;
-#endif
+   DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
 
    return result;
 }
@@ -276,9 +184,7 @@ DIGIT gf2x_get_coeff(const DIGIT poly[], const unsigned int exponent)
 static inline
 void gf2x_set_coeff(DIGIT poly[], const unsigned int exponent, DIGIT value)
 {
-
    int straightIdx = (NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_b -1) - exponent;
-
    int digitIdx = straightIdx / DIGIT_SIZE_b;
 
    unsigned int inDigitIdx = straightIdx % DIGIT_SIZE_b;
@@ -340,10 +246,6 @@ void gf2x_mod_mul_sparse(int
                          int sizeB, /*number of ones in B*/
                          const POSITION_T B[]);
 /*----------------------------------------------------------------------------*/
-
-void left_bit_shift_wide_n(const int length, DIGIT in[], int amount);
-
-/*----------------------------------------------------------------------------*/
 void gf2x_mod_mul_dense_to_sparse(DIGIT Res[],
                                   const DIGIT dense[],
                                   POSITION_T sparse[],
@@ -394,3 +296,13 @@ void quicksort(POSITION_T Res[], unsigned int sizeR)
       }
    }
 }
+
+#ifdef HIGH_PERFORMANCE_X86_64
+#define GF2X_DIGIT_MOD_INVERSE gf2x_mod_inverse_KTT
+int gf2x_mod_inverse_KTT(DIGIT out[], const DIGIT in[]);
+#else
+#define GF2X_DIGIT_MOD_INVERSE gf2x_mod_inverse
+int gf2x_mod_inverse(DIGIT out[], const DIGIT in[]);
+#endif
+
+

@@ -1,10 +1,10 @@
 /**
  *
- * <bf_deconding.h>
+ * <bf_decoding.h>
  *
- * @version 1.0 (September 2017)
+ * @version 2.0 (March 2019)
  *
- * Reference ISO-C99 Implementation of LEDAkem cipher" using GCC built-ins.
+ * Reference ISO-C11 Implementation of the LEDAcrypt KEM cipher using GCC built-ins.
  *
  * In alphabetical order:
  *
@@ -33,7 +33,6 @@
 #pragma once
 #include "qc_ldpc_parameters.h"
 #include "gf2x_limbs.h"
-#include "immintrin.h"
 #define              ITERATIONS_MAX   (15)
 
 
@@ -45,109 +44,107 @@ int bf_decoding(DIGIT err[],
 
 /******************** START of definitions for N0 = 2 *************************/
 #if (CATEGORY == 1) && (N0 == 2)
-#define SYNDROME_TRESH_LOOKUP_TABLE {0,       43},\
-{2843,       44},\
-{4392,       45},\
-{5193,       46},\
-{5672,       47}
+#define SYNDROME_TRESH_LOOKUP_TABLE {0,       41},\
+{2919,       42},\
+{4401,       43},\
+{5178,       44},\
+{5648,       45}
 #endif
 
 #if ((CATEGORY == 2) || (CATEGORY == 3)) && (N0 == 2)
 #define SYNDROME_TRESH_LOOKUP_TABLE {0,       61},\
-{3957,       62},\
-{6698,       63},\
-{8128,       64},\
-{8978,       65},\
-{9578,       66},\
-{9981,       67},\
-{10286,       68},\
-{10533,       69}
+{4230,       62},\
+{7022,       63},\
+{8501,       64},\
+{9423,       65},\
+{10023,       66},\
+{10452,       67},\
+{10777,       68}
 #endif
 
 #if ((CATEGORY == 4) || (CATEGORY == 5)) && (N0 == 2)
 #define SYNDROME_TRESH_LOOKUP_TABLE {0,       74},\
-{5742,       75},\
-{10032,       76},\
-{12263,       77},\
-{13621,       78},\
-{14538,       79},\
-{15211,       80},\
-{15706,       81},\
-{16091,       82},\
-{16391,       83},\
-{16640,       84}
+{5521,       75},\
+{9830,       76},\
+{12004,       77},\
+{13363,       78},\
+{14241,       79},\
+{14915,       80},\
+{15384,       81},\
+{15770,       82},\
+{16069,       83},\
+{16300,       84}
 #endif
 
 /******************** START of definitions for N0 = 3 *************************/
 
 #if (CATEGORY == 1) && (N0 == 3)
-#define SYNDROME_TRESH_LOOKUP_TABLE {0,       49},\
-{2509,       50},\
-{3124,       51},\
-{3478,       52},\
-{3695,       53},\
-{3878,       54}
+#define SYNDROME_TRESH_LOOKUP_TABLE {0,       43},\
+{1089,       44},\
+{2212,       45},\
+{2717,       46},\
+{3003,       47},\
+{3214,       48},\
+{3355,       49}
 #endif
 
 #if ((CATEGORY == 2) || (CATEGORY == 3)) && (N0 == 3)
-#define SYNDROME_TRESH_LOOKUP_TABLE  {0,       71},\
-{4255,       72},\
-{5492,       73},\
-{6203,       74},\
-{6666,       75},\
-{7021,       76},\
-{7271,       77},\
-{7466,       78},\
-{7617,       79}
+#define SYNDROME_TRESH_LOOKUP_TABLE  {0,       64},\
+{3954,       65},\
+{5039,       66},\
+{5663,       67},\
+{6070,       68},\
+{6383,       69},\
+{6602,       70},\
+{6773,       71}
 #endif
 
 #if ((CATEGORY == 4) || (CATEGORY == 5)) && (N0 == 3)
-#define SYNDROME_TRESH_LOOKUP_TABLE {0,       88},\
-{6551,       89},\
-{8560,       90},\
-{9789,       91},\
-{10536,       92},\
-{11123,       93},\
-{11519,       94},\
-{11837,       95},\
-{12091,       96},\
-{12319,       97}
+#define SYNDROME_TRESH_LOOKUP_TABLE {0,       86},\
+{6369,       87},\
+{8307,       88},\
+{9436,       89},\
+{10162,       90},\
+{10692,       91},\
+{11113,       92},\
+{11419,       93},\
+{11664,       94},\
+{11861,       95}
 #endif
 
 /******************** START of definitions for N0 = 4 *************************/
 
 
 #if (CATEGORY == 1) && (N0 == 4)
-#define SYNDROME_TRESH_LOOKUP_TABLE {0,       53},\
-{2021,       54},\
-{2611,       55},\
-{2957,       56},\
-{3181,       57},\
-{3345,       58},\
-{3447,       59}
+#define SYNDROME_TRESH_LOOKUP_TABLE {0,       49},\
+{1840,       50},\
+{2333,       51},\
+{2648,       52},\
+{2850,       53},\
+{2978,       54}
 #endif
 
 #if ((CATEGORY == 2) || (CATEGORY == 3)) && (N0 == 4)
 #define SYNDROME_TRESH_LOOKUP_TABLE {0,       71},\
-{3244,       72},\
-{4359,       73},\
-{5006,       74},\
-{5408,       75},\
-{5712,       76},\
-{5915,       77},\
-{6094,       78},\
-{6230,       79}
+{3146,       72},\
+{4261,       73},\
+{4859,       74},\
+{5263,       75},\
+{5568,       76},\
+{5771,       77},\
+{5924,       78},\
+{6061,       79}
 #endif
 
 #if ((CATEGORY == 4) || (CATEGORY == 5)) && (N0 == 4)
 #define SYNDROME_TRESH_LOOKUP_TABLE {0,       88},\
-{4788,       89},\
-{6581,       90},\
-{7620,       91},\
-{8300,       92},\
-{8782,       93},\
-{9121,       94},\
-{9386,       95},\
-{9593,       96},\
-{9780,       97}
+{4779,       89},\
+{6564,       90},\
+{7596,       91},\
+{8223,       92},\
+{8707,       93},\
+{9047,       94},\
+{9314,       95},\
+{9522,       96},\
+{9709,       97}
 #endif
