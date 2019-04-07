@@ -32,6 +32,9 @@
 
 #pragma once
 
+#include <immintrin.h>
+#include "architecture_detect.h"
+
 #include "gf2x_limbs.h"
 #include "qc_ldpc_parameters.h"
 
@@ -146,10 +149,12 @@ with this CPU word bitsize !!! "
 /*--------------------------------------------------------------------------*/
 
 /* returns a packed representation of the bits corresponding to the coefficients
- * of the range first_exponent to first_exponent+DIGIT_SIZE_b mod P. Does load 
+ * of the range first_exponent to first_exponent+DIGIT_SIZE_b mod P. Does load
  * cyclically when the coefficients exceed P. Assumes cyclic padding with enough
  * bit material after P in the MSW of the poly. poly is NUM_DIGITS_GF2X_ELEMENT+1 DIGITS
  * long */
+
+#ifndef HIGH_PERFORMANCE_X86_64
 
 static inline
 DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsigned int first_exponent)
@@ -166,6 +171,87 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
    return result;
 }
 
+#else
+
+#if (DIGIT_MAX == UINT64_MAX)
+#define DIGIT_SIZE_b_EXPONENT 6
+#elif (DIGIT_MAX == UINT32_MAX)
+#define DIGIT_SIZE_b_EXPONENT 5
+#elif (DIGIT_MAX == UINT16_MAX)
+#define DIGIT_SIZE_b_EXPONENT 4
+#elif (DIGIT_MAX == UINT8_MAX)
+#define DIGIT_SIZE_b_EXPONENT 3
+#else
+#error "unable to find the bitsize of size_t"
+#endif
+
+static inline __m128i _mm256_extractf128i_lower(__m256i a) {
+   return _mm256_extractf128_si256(a, 0x00);
+}
+
+static inline __m128i _mm256_extractf128i_upper(__m256i a) {
+   return _mm256_extractf128_si256(a, 0x01);
+}
+
+static inline
+void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
+                                                   __m256i first_exponent_vector,
+                                                   __m256i *restrict __lowerResult,
+                                                   __m256i *restrict __upperResult)
+{
+   __m256i addend = _mm256_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
+   __m256i straightIdx = _mm256_sub_epi32(addend, first_exponent_vector);
+
+   // division by a power of two becomes a logic right shift
+   __m256i digitIdx     = _mm256_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
+
+   // Gather operation to load 8x 64-bit digits in two registers
+   __m128i lowerDigitIdx   = _mm256_extractf128i_lower (digitIdx);
+   __m256i lowerLsw        = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+   __m128i upperDigitIdx   = _mm256_extractf128i_upper (digitIdx);
+   __m256i upperLsw        = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+
+   lowerDigitIdx     = _mm_sub_epi32(lowerDigitIdx, _mm_set1_epi32(1));
+   __m256i lowerMsw  = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
+
+   upperDigitIdx     = _mm_sub_epi32(upperDigitIdx, _mm_set1_epi32(1));
+   __m256i upperMsw  = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+
+   // unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
+   // n % 2^i = n & (2^i - 1)
+   __m256i inDigitIdx = _mm256_and_si256(first_exponent_vector,
+                                          _mm256_set1_epi32(DIGIT_SIZE_b-1)
+                                       );
+
+   //DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
+   // inDigitIdx is composed of 32-bit integers,
+   // but I need 64-bit integers to compute the result
+   __256i lowerInDigitIdx = _mm256_cvtepu32_epi64(
+                              _mm256_extractf128i_lower(inDigitIdx)
+                              );
+   __256i upperInDigitIdx = _mm256_cvtepu32_epi64(
+                              _mm256_extractf128i_upper(inDigitIdx)
+                              );
+
+   __m128i digitSizeBit    = _mm256_set1_epi64x(DIGIT_SIZE_b);
+   __m128i sllOperand      = _mm256_sub_epi64(digitSizeBit, lowerInDigitIdx);
+
+   __m256i lowerResult     = _mm256_or_si256(
+                              _mm256_sllv_epi64(lowerMsw, sllOperand),
+                              _mm256_srlv_epi64 (lowerLsw, lowerInDigitIdx)
+                              );
+
+            sllOperand     = _mm256_sub_epi64(digitSizeBit, upperInDigitIdx);
+   __m256i upperResult     = _mm256_or_si256(
+                              _mm256_sllv_epi64(upperMsw, sllOperand),
+                              _mm256_srlv_epi64 (upperLsw, upperInDigitIdx)
+                              );
+
+   *__lowerResult = lowerResult;
+   *__upperResult = upperResult;
+}
+
+#endif
 /*--------------------------------------------------------------------------*/
 
 /* returns the coefficient of the x^exponent term as the LSB of a digit */
@@ -304,5 +390,3 @@ int gf2x_mod_inverse_KTT(DIGIT out[], const DIGIT in[]);
 #define GF2X_DIGIT_MOD_INVERSE gf2x_mod_inverse
 int gf2x_mod_inverse(DIGIT out[], const DIGIT in[]);
 #endif
-
-
