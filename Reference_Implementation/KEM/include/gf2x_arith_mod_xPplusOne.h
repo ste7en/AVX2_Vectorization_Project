@@ -200,7 +200,7 @@ void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                    __m256i *restrict __upperResult)
 {
    __m256i addend = _mm256_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
-   __m256i straightIdx = _mm256_sub_epi32(addend, first_exponent_vector);
+   __m256i straightIdx = _mm256_abs_epi32(_mm256_sub_epi32(addend, first_exponent_vector));
 
    // division by a power of two becomes a logic right shift
    __m256i digitIdx     = _mm256_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
