@@ -226,15 +226,15 @@ void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
    //DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
    // inDigitIdx is composed of 32-bit integers,
    // but I need 64-bit integers to compute the result
-   __256i lowerInDigitIdx = _mm256_cvtepu32_epi64(
+   __m256i lowerInDigitIdx = _mm256_cvtepu32_epi64(
                               _mm256_extractf128i_lower(inDigitIdx)
                               );
-   __256i upperInDigitIdx = _mm256_cvtepu32_epi64(
+   __m256i upperInDigitIdx = _mm256_cvtepu32_epi64(
                               _mm256_extractf128i_upper(inDigitIdx)
                               );
 
-   __m128i digitSizeBit    = _mm256_set1_epi64x(DIGIT_SIZE_b);
-   __m128i sllOperand      = _mm256_sub_epi64(digitSizeBit, lowerInDigitIdx);
+   __m256i digitSizeBit    = _mm256_set1_epi64x(DIGIT_SIZE_b);
+   __m256i sllOperand      = _mm256_sub_epi64(digitSizeBit, lowerInDigitIdx);
 
    __m256i lowerResult     = _mm256_or_si256(
                               _mm256_sllv_epi64(lowerMsw, sllOperand),
