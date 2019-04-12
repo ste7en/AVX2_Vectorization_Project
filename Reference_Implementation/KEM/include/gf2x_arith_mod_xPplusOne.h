@@ -195,62 +195,38 @@ static inline __m128i _mm256_extractf128i_upper(__m256i a) {
 
 static inline
 void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
-                                                   __m256i first_exponent_vector,
-                                                   __m256i *restrict __lowerResult,
-                                                   __m256i *restrict __upperResult)
+                                                   __m128i first_exponent_vector,
+                                                   __m256i *restrict __result,
+                                                   )
 {
-   __m256i addend = _mm256_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
-   __m256i straightIdx = _mm256_abs_epi32(_mm256_sub_epi32(addend, first_exponent_vector));
+   __m128i addend = _mm_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
+   __m128i straightIdx = _mm_abs_epi32(_mm_sub_epi32(addend, first_exponent_vector));
 
    // division by a power of two becomes a logic right shift
-   __m256i digitIdx     = _mm256_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
+   __m128i digitIdx    = _mm_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
 
-   // Gather operation to load 8x 64-bit digits in two registers
-   __m128i lowerDigitIdx   = _mm256_extractf128i_lower (digitIdx);
-   __m256i lowerLsw        = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
-   __m128i upperDigitIdx   = _mm256_extractf128i_upper (digitIdx);
-   __m256i upperLsw        = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
-
-   lowerDigitIdx     = _mm_sub_epi32(lowerDigitIdx, _mm_set1_epi32(1));
-   __m256i lowerMsw  = _mm256_i32gather_epi64 (poly, lowerDigitIdx, 1);
-
-   upperDigitIdx     = _mm_sub_epi32(upperDigitIdx, _mm_set1_epi32(1));
-   __m256i upperMsw  = _mm256_i32gather_epi64 (poly, upperDigitIdx, 1);
+   // Gather operation to load 4x 64-bit digits in a register
+   __m256i lsw = _mm256_i32gather_epi64 (poly, digitIdx, 1);
+   digitIdx    = _mm_sub_epi32(digitIdx, _mm_set1_epi32 (1));
+   __m256i msw = _mm256_i32gather_epi64 (poly, digitIdx, 1);
 
    // unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
    // n % 2^i = n & (2^i - 1)
-   __m256i inDigitIdx = _mm256_and_si256(first_exponent_vector,
-                                          _mm256_set1_epi32(DIGIT_SIZE_b-1)
+   __m128i inDigitIdx = _mm_and_si128(first_exponent_vector,
+                                          _mm_set1_epi32(DIGIT_SIZE_b-1)
                                        );
 
    //DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
-   // inDigitIdx is composed of 32-bit integers,
-   // but I need 64-bit integers to compute the result
-   __m256i lowerInDigitIdx = _mm256_cvtepu32_epi64(
-                              _mm256_extractf128i_lower(inDigitIdx)
-                              );
-   __m256i upperInDigitIdx = _mm256_cvtepu32_epi64(
-                              _mm256_extractf128i_upper(inDigitIdx)
-                              );
 
-   __m256i digitSizeBit    = _mm256_set1_epi64x(DIGIT_SIZE_b);
-   __m256i sllOperand      = _mm256_sub_epi64(digitSizeBit, lowerInDigitIdx);
-
-   __m256i lowerResult     = _mm256_or_si256(
-                              _mm256_sllv_epi64(lowerMsw, sllOperand),
-                              _mm256_srlv_epi64 (lowerLsw, lowerInDigitIdx)
+   __m256i inDigitIdx_epi64 = _mm256_cvtepu32_epi64(inDigitIdx);
+   __m256i digitSizeBit     = _mm256_set1_epi64x(DIGIT_SIZE_b);
+   __m256i sllOperand       = _mm256_sub_epi64(digitSizeBit, inDigitIdx_epi64);
+   __m256i result           = _mm256_or_si256(
+                                 _mm256_sllv_epi64(msw, sllOperand),
+                                 _mm256_srlv_epi64(lsw, inDigitIdx_epi64)
                               );
-
-            sllOperand     = _mm256_sub_epi64(digitSizeBit, upperInDigitIdx);
-   __m256i upperResult     = _mm256_or_si256(
-                              _mm256_sllv_epi64(upperMsw, sllOperand),
-                              _mm256_srlv_epi64 (upperLsw, upperInDigitIdx)
-                              );
-
-   *__lowerResult = lowerResult;
-   *__upperResult = upperResult;
+   *__result = result;
 }
-
 #endif
 /*--------------------------------------------------------------------------*/
 
