@@ -176,7 +176,7 @@ int bf_decoding(DIGIT out[], // N0 polynomials
 
       for(int valueIdx = 0; valueIdx < P; valueIdx = valueIdx + AVX2_REG_SIZE_b) {
          /* this fetches AVX2_REG_SIZE_b bits from each Htrpos, packed, and adds them to the 256 upc counters in upcmat */
-         for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx = HtrOneIdx++) {
+         for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
             // TODO: - vectorize this modulo operation
             POSITION_T tmp = (HtrPosOnes[i][HtrOneIdx]+valueIdx);
             tmp = tmp %P ;
