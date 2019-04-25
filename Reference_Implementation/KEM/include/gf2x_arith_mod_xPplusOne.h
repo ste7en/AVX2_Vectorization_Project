@@ -196,7 +196,7 @@ static inline __m128i _mm256_extractf128i_upper(__m256i a) {
 static inline
 void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                    __m128i first_exponent_vector,
-                                                   __m256i *restrict __result,
+                                                   __m256i *restrict __result
                                                    )
 {
    __m128i addend = _mm_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
@@ -225,7 +225,7 @@ void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                  _mm256_sllv_epi64(msw, sllOperand),
                                  _mm256_srlv_epi64(lsw, inDigitIdx_epi64)
                               );
-   *__result = result;
+   (*__result) = result;
 }
 #endif
 /*--------------------------------------------------------------------------*/
