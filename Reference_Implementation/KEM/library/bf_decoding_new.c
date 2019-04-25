@@ -57,17 +57,14 @@ static inline __m256i permute_row(__m256i row){
 }
 
 static inline void transpose_matrix_32_8(__m256i *restrict matrix){
-/* Start with 8x8 _epi32 transpose by casting the epi32 (si256) to _ps and use
-   the 8x8 float transpose from https://stackoverflow.com/a/25627536/2439725
-   See that answer for alternative 8x8 float transposes with slightly less shuffles.  */
-    __m256  row0  = _mm256_castsi256_ps(matrix[0]);
-    __m256  row1  = _mm256_castsi256_ps(matrix[1]);
-    __m256  row2  = _mm256_castsi256_ps(matrix[2]);
-    __m256  row3  = _mm256_castsi256_ps(matrix[3]);
-    __m256  row4  = _mm256_castsi256_ps(matrix[4]);
-    __m256  row5  = _mm256_castsi256_ps(matrix[5]);
-    __m256  row6  = _mm256_castsi256_ps(matrix[6]);
-    __m256  row7  = _mm256_castsi256_ps(matrix[7]);
+    __m256  row0  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[0]));
+    __m256  row1  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[1]));
+    __m256  row2  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[2]));
+    __m256  row3  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[3]));
+    __m256  row4  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[4]));
+    __m256  row5  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[5]));
+    __m256  row6  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[6]));
+    __m256  row7  = _mm256_castsi256_ps(_mm256_loadu_si256(&matrix[7]));
     __m256  __t0  = _mm256_unpacklo_ps(row0, row1);
     __m256  __t1  = _mm256_unpackhi_ps(row0, row1);
     __m256  __t2  = _mm256_unpacklo_ps(row2, row3);
@@ -110,14 +107,14 @@ static inline void transpose_matrix_32_8(__m256i *restrict matrix){
             row5i = permute_row(row5i);
             row6i = permute_row(row6i);
             row7i = permute_row(row7i);
-            matrix[0] = row0i;
-            matrix[1] = row1i;
-            matrix[2] = row2i;
-            matrix[3] = row3i;
-            matrix[4] = row4i;
-            matrix[5] = row5i;
-            matrix[6] = row6i;
-            matrix[7] = row7i;
+            _mm256_storeu_si256(&matrix[0], row0i);
+            _mm256_storeu_si256(&matrix[1], row1i);
+            _mm256_storeu_si256(&matrix[2], row2i);
+            _mm256_storeu_si256(&matrix[3], row3i);
+            _mm256_storeu_si256(&matrix[4], row4i);
+            _mm256_storeu_si256(&matrix[5], row5i);
+            _mm256_storeu_si256(&matrix[6], row6i);
+            _mm256_storeu_si256(&matrix[7], row7i);
 }
 /******************** END of functions' definitions for vector operations *************************/
 
@@ -169,7 +166,7 @@ int bf_decoding(DIGIT out[], // N0 polynomials
 #define AVX2_REG_SIZE_B 32
     // VECTYPE upcMat[VECTYPE_SIZE_b/BIT_SIZE_UPC];
     // VECTYPE packedSynBits;
-    __m256i vecUpcMat[AVX2_REG_SIZE_b/AVX2_REG_SIZE_B] = {0};
+    __m256i vecUpcMat[AVX2_REG_SIZE_b/AVX2_REG_SIZE_B] = {0x00};
     __m256i packedSynBits = _mm256_setzero_si256();
 
     for (int i = 0; i < N0; i++) {
@@ -179,7 +176,7 @@ int bf_decoding(DIGIT out[], // N0 polynomials
          for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
             // TODO: - vectorize this modulo operation
             POSITION_T tmp = (HtrPosOnes[i][HtrOneIdx]+valueIdx);
-            tmp = tmp %P ;
+            tmp = tmp % P ;
 
             __m128i basePos = _mm_set1_epi32(tmp);
             /* lsb here is the one in base pos, others are subseq*/
