@@ -185,14 +185,6 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 #error "unable to find the bitsize of size_t"
 #endif
 
-static inline __m128i _mm256_extractf128i_lower(__m256i a) {
-   return _mm256_extractf128_si256(a, 0x00);
-}
-
-static inline __m128i _mm256_extractf128i_upper(__m256i a) {
-   return _mm256_extractf128_si256(a, 0x01);
-}
-
 static inline
 void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                    __m128i first_exponent_vector,
