@@ -184,39 +184,40 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 #else
 #error "unable to find the bitsize of size_t"
 #endif
+#define SHIFTWORDSIZE_BIT 64
 
-static inline
-void gf2x_get_AVX2_REG_SIZE_coeff_vector_boundless(const DIGIT poly[],
-                                                   __m128i first_exponent_vector,
-                                                   __m256i *restrict __result
-                                                   )
-{
-   __m128i addend = _mm_set1_epi32((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1);
-   __m128i straightIdx = _mm_abs_epi32(_mm_sub_epi32(addend, first_exponent_vector));
+static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
+   __m256i __t0 = _mm256_slli_epi64(a, imm8);
+   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0b10010000);
+   __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x00);
+   __m256i __t2 = _mm256_srli_epi64(__t1, SHIFTWORDSIZE_BIT-imm8);
+   return _mm256_or_si256(__t0, __t2);
+}
 
-   // division by a power of two becomes a logic right shift
-   __m128i digitIdx    = _mm_srli_epi32(straightIdx, DIGIT_SIZE_b_EXPONENT);
+static inline __m256i _mm256_SHIFT_RIGHT_bit(__m256i a, int imm8) {
+   __m256i __t0 = _mm256_srli_epi64(a, imm8);
+   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0b00111001);
+   __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x03);
+   __m256i __t2 = _mm256_slli_epi64(__t1, SHIFTWORDSIZE_BIT-imm8);
+   return _mm256_or_si256(__t0, __t2);
+}
 
-   // Gather operation to load 4x 64-bit digits in a register
-   __m256i lsw = _mm256_i32gather_epi64 (poly, digitIdx, 1);
-   digitIdx    = _mm_sub_epi32(digitIdx, _mm_set1_epi32 (1));
-   __m256i msw = _mm256_i32gather_epi64 (poly, digitIdx, 1);
+static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
+                                                             const unsigned int first_exponent,
+                                                             __m256i *restrict __result) {
+   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
+   unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
 
-   // unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
-   // n % 2^i = n & (2^i - 1)
-   __m128i inDigitIdx = _mm_and_si128(first_exponent_vector,
-                                          _mm_set1_epi32(DIGIT_SIZE_b-1)
-                                       );
+   __m256i lsw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx]);
+   __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-1]);
+   unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
 
-   //DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
+   // DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
+   msw = _mm256_SHIFT_LEFT_bit(msw, DIGIT_SIZE_b-inDigitIdx);
+   lsw = _mm256_SHIFT_RIGHT_bit(lsw, inDigitIdx);
 
-   __m256i inDigitIdx_epi64 = _mm256_cvtepu32_epi64(inDigitIdx);
-   __m256i digitSizeBit     = _mm256_set1_epi64x(DIGIT_SIZE_b);
-   __m256i sllOperand       = _mm256_sub_epi64(digitSizeBit, inDigitIdx_epi64);
-   __m256i result           = _mm256_or_si256(
-                                 _mm256_sllv_epi64(msw, sllOperand),
-                                 _mm256_srlv_epi64(lsw, inDigitIdx_epi64)
-                              );
+   __m256i result = _mm256_or_si256(msw, lsw);
+
    (*__result) = result;
 }
 #endif
