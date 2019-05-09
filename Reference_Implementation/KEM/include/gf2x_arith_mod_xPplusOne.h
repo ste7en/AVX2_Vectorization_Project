@@ -154,8 +154,6 @@ with this CPU word bitsize !!! "
  * bit material after P in the MSW of the poly. poly is NUM_DIGITS_GF2X_ELEMENT+1 DIGITS
  * long */
 
-#ifndef HIGH_PERFORMANCE_X86_64
-
 static inline
 DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsigned int first_exponent)
 {
@@ -171,7 +169,7 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
    return result;
 }
 
-#else
+#ifdef HIGH_PERFORMANCE_X86_64
 
 #if (DIGIT_MAX == UINT64_MAX)
 #define DIGIT_SIZE_b_EXPONENT 6
@@ -188,7 +186,7 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 
 static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
    __m256i __t0 = _mm256_slli_epi64(a, imm8);
-   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0b10010000);
+   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x90);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x00);
    __m256i __t2 = _mm256_srli_epi64(__t1, SHIFTWORDSIZE_BIT-imm8);
    return _mm256_or_si256(__t0, __t2);
@@ -196,7 +194,7 @@ static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
 
 static inline __m256i _mm256_SHIFT_RIGHT_bit(__m256i a, int imm8) {
    __m256i __t0 = _mm256_srli_epi64(a, imm8);
-   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0b00111001);
+   __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x39);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x03);
    __m256i __t2 = _mm256_slli_epi64(__t1, SHIFTWORDSIZE_BIT-imm8);
    return _mm256_or_si256(__t0, __t2);
