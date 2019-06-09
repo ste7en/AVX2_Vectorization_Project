@@ -213,9 +213,11 @@ static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
    __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-4]);
            msw = _mm256_permute4x64_epi64(msw, 0b00011011);
    unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
-   // DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
-   // msw = _mm256_SHIFT_LEFT_bit(msw, DIGIT_SIZE_b-inDigitIdx);
-   // lsw = _mm256_SHIFT_RIGHT_bit(lsw, inDigitIdx);
+   /* Semantically equivalent to:
+      DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
+      msw = _mm256_SHIFT_LEFT_bit(msw, DIGIT_SIZE_b-inDigitIdx);
+      lsw = _mm256_SHIFT_RIGHT_bit(lsw, inDigitIdx);
+   */
    msw = _mm256_slli_epi64(msw, DIGIT_SIZE_b-inDigitIdx);
    lsw = _mm256_srli_epi64(lsw, inDigitIdx);
    __m256i result = _mm256_or_si256(msw, lsw);
