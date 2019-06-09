@@ -34,7 +34,7 @@
 
 #include <immintrin.h>
 #include "architecture_detect.h"
-
+#include <stdio.h>
 #include "gf2x_limbs.h"
 #include "qc_ldpc_parameters.h"
 
@@ -160,9 +160,11 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 
    unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
+   // printf("In DIGITSIZE: straightIdx= %u, digitIdx= %u\n", straightIdx, digitIdx);
    DIGIT lsw = poly[digitIdx];
    DIGIT msw = poly[digitIdx-1];
    unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
+   // printf("\ngf2x_get_DIGIT_SIZE_coeff_vector_boundless:\nstraightIdx = %u, digitIdx = %u, inDigitIdx = %u\n---", straightIdx, digitIdx, inDigitIdx);
 
    DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
 
@@ -185,6 +187,7 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 #define SHIFTWORDSIZE_BIT 64
 
 static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
+   // if (imm8 > 63) printf("%d\n", imm8);
    __m256i __t0 = _mm256_slli_epi64(a, imm8);
    __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x90);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x00);
@@ -193,29 +196,31 @@ static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
 }
 
 static inline __m256i _mm256_SHIFT_RIGHT_bit(__m256i a, int imm8) {
+   // if (imm8 > 63) printf("%d\n", imm8);
    __m256i __t0 = _mm256_srli_epi64(a, imm8);
    __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x39);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x03);
    __m256i __t2 = _mm256_slli_epi64(__t1, SHIFTWORDSIZE_BIT-imm8);
    return _mm256_or_si256(__t0, __t2);
 }
-
 static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                              const unsigned int first_exponent,
                                                              __m256i *restrict __result) {
-   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
+   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+4)*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
-
-   __m256i lsw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx]);
-   __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-1]);
+   // printf("In M256SIZE: straightIdx= %u, digitIdx= %u\n", straightIdx, digitIdx);
+   __m256i lsw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-3]);
+           lsw = _mm256_permute4x64_epi64(lsw, 0b00011011);
+   __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-4]);
+           msw = _mm256_permute4x64_epi64(msw, 0b00011011);
    unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
-
    // DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
-   msw = _mm256_SHIFT_LEFT_bit(msw, DIGIT_SIZE_b-inDigitIdx);
-   lsw = _mm256_SHIFT_RIGHT_bit(lsw, inDigitIdx);
-
+   // msw = _mm256_SHIFT_LEFT_bit(msw, DIGIT_SIZE_b-inDigitIdx);
+   // lsw = _mm256_SHIFT_RIGHT_bit(lsw, inDigitIdx);
+   msw = _mm256_slli_epi64(msw, DIGIT_SIZE_b-inDigitIdx);
+   lsw = _mm256_srli_epi64(lsw, inDigitIdx);
    __m256i result = _mm256_or_si256(msw, lsw);
-
+   // printf("\n gf2x_get_M256_SIZE_coeff_vector_boundless:\nstraightIdx = %u, digitIdx = %u, inDigitIdx = %u\n---", straightIdx, digitIdx, inDigitIdx);
    (*__result) = result;
 }
 #endif
