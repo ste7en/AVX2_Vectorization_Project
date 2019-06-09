@@ -208,7 +208,6 @@ static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                              __m256i *restrict __result) {
    unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+4)*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
-   // printf("In M256SIZE: straightIdx= %u, digitIdx= %u\n", straightIdx, digitIdx);
    __m256i lsw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-3]);
            lsw = _mm256_permute4x64_epi64(lsw, 0b00011011);
    __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-4]);
@@ -220,7 +219,7 @@ static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
    msw = _mm256_slli_epi64(msw, DIGIT_SIZE_b-inDigitIdx);
    lsw = _mm256_srli_epi64(lsw, inDigitIdx);
    __m256i result = _mm256_or_si256(msw, lsw);
-   // printf("\n gf2x_get_M256_SIZE_coeff_vector_boundless:\nstraightIdx = %u, digitIdx = %u, inDigitIdx = %u\n---", straightIdx, digitIdx, inDigitIdx);
+
    (*__result) = result;
 }
 #endif
