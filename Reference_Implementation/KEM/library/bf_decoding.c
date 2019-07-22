@@ -161,7 +161,7 @@ int bf_decoding(DIGIT out[], // N0 polynomials
 #define VEC_COMB_MASK 0x0101010101010101ULL
 #define AVX2_REG_SIZE_b 256
 #define AVX2_REG_SIZE_B 32
-   uint8_t unsatParityChecks[N0][ ROUND_UP(P,SIZE_OF_UPC_VECTORIZED_READ_AVX2)+SIZE_OF_UPC_VECTORIZED_READ_AVX2] = {{0}};
+   uint8_t unsatParityChecks[N0][ ROUND_UP(P,SIZE_OF_UPC_VECTORIZED_READ_AVX2)+SIZE_OF_UPC_VECTORIZED_READ_AVX2 ] = {{0}};
    POSITION_T currQBitPos[M];
    /* syndrome is endowed with cyclic padding in the leading word to avoid
     * boundary checks. The pad should be at least as long as the bit-len of one
@@ -170,7 +170,6 @@ int bf_decoding(DIGIT out[], // N0 polynomials
    int check;
    int imax = ITERATIONS_MAX;
    unsigned int synd_corrt_vec[][2]= {SYNDROME_TRESH_LOOKUP_TABLE};
-   // printf("%d\n", MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT);
 
    do {
       gf2x_copy(currSyndrome+4, privateSyndrome);
@@ -186,24 +185,6 @@ int bf_decoding(DIGIT out[], // N0 polynomials
       // currSyndrome[0] = currSyndrome[NUM_DIGITS_GF2X_ELEMENT] >> (DIGIT_SIZE_b- (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT+1));
 #endif
 
-// // START BLOCK TO REMOVE - ONLY FOR TEST
-//    DIGIT currSyndrome_test[NUM_DIGITS_GF2X_ELEMENT+1];
-//    VECTYPE upcMat_test[BIT_SIZE_UPC];
-//    VECTYPE packedSynBits_test;
-//    int numDigitsGf2xElement = NUM_DIGITS_GF2X_ELEMENT;
-//    int roundedUp = ROUND_UP(P,SIZE_OF_UPC_VECTORIZED_READ)+SIZE_OF_UPC_VECTORIZED_READ;
-//    uint8_t unsatParityChecks_test[N0][ ROUND_UP(P,SIZE_OF_UPC_VECTORIZED_READ)+SIZE_OF_UPC_VECTORIZED_READ] = {{0}};
-//    gf2x_copy(currSyndrome_test+1, privateSyndrome);
-//
-//       /*position of the first set bit in the word, counting 63 ... 0*/
-//    #if (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT == (DIGIT_SIZE_b-1))
-//       currSyndrome_test[0] = currSyndrome_test[NUM_DIGITS_GF2X_ELEMENT];
-//    #else
-//       currSyndrome_test[1] |= (currSyndrome_test[NUM_DIGITS_GF2X_ELEMENT] << (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT+1) );
-//       currSyndrome_test[0] = currSyndrome_test[NUM_DIGITS_GF2X_ELEMENT] >> (DIGIT_SIZE_b- (MSb_POSITION_IN_MSB_DIGIT_OF_ELEMENT+1));
-//    #endif
-// // END BLOCK TO REMOVE - ONLY FOR TEST
-
       __m256i vecUpcMat[BIT_SIZE_UPC];
       __m256i packedSynBits = _mm256_setzero_si256();
 
@@ -214,9 +195,6 @@ int bf_decoding(DIGIT out[], // N0 polynomials
             for (int upcMatRow = 0; upcMatRow < BIT_SIZE_UPC; upcMatRow++) {
                vecUpcMat[upcMatRow] = _mm256_setzero_si256();
             }
-            // // START REMOVE
-            // memset(upcMat_test, 0 , VECTYPE_SIZE_B*(VECTYPE_SIZE_b/BIT_SIZE_UPC));
-            // // END REMOVE
 
             /* this fetches AVX2_REG_SIZE_b bits from each Htrpos, packed, and adds them to the 256 upc counters in upcmat */
             for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
@@ -228,18 +206,6 @@ int bf_decoding(DIGIT out[], // N0 polynomials
                /* lsb here is the one in base pos, others are subseq*/
                gf2x_get_M256_SIZE_coeff_vector_boundless(currSyndrome, basePos, &packedSynBits);
 
-               // //START REMOVE
-               // long long test[4] = {0};
-               // for (int valueIdx_test = valueIdx; valueIdx_test < valueIdx + 256; valueIdx_test = valueIdx_test + 64) {
-               //    POSITION_T basePos_test = (HtrPosOnes[i][HtrOneIdx]+valueIdx_test);
-               //    basePos_test = basePos_test % P ;
-               //    /* lsb here is the one in base pos, others are subseq*/
-               //    test[(valueIdx_test-valueIdx)/64] = gf2x_get_DIGIT_SIZE_coeff_vector_boundless(currSyndrome_test,basePos_test);
-               //    // packedSynBits_test = gf2x_get_DIGIT_SIZE_coeff_vector_boundless(currSyndrome_test,basePos_test);
-               // }
-               // printf("%d\n", memcmp(&test, &packedSynBits, 32));
-               // //END REMOVE
-
                for(int upcMatRow = 0; upcMatRow < BIT_SIZE_UPC; upcMatRow++) {
                   vecUpcMat[upcMatRow] = _mm256_add_epi64(vecUpcMat[upcMatRow],
                                                           _mm256_and_si256(packedSynBits,
@@ -247,14 +213,6 @@ int bf_decoding(DIGIT out[], // N0 polynomials
                                                          );
                   packedSynBits = _mm256_SHIFT_RIGHT_bit(packedSynBits, 0x01);
                }
-
-               // //START REMOVE
-               // for(int upcMatRow = 0; upcMatRow < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatRow++){
-               //    upcMat_test[upcMatRow] += packedSynBits_test & VEC_COMB_MASK;
-               //    packedSynBits_test = packedSynBits_test >> 1;
-               // }/* end of for computing 64 upcs*/
-               // //END REMOVE
-
             } /* end of for computing 256 upcs*/ // index HtrOneIdx
 
             /* commit computed UPCs in the upc vector, in the proper order.
@@ -268,71 +226,8 @@ int bf_decoding(DIGIT out[], // N0 polynomials
                 _mm256_storeu_si256(vp, vecUpcMat[upcMatRow]);
              }
 
-   //           //START REMOVE
-   //           /* commit computed UPCs in the upc vector, in the proper order.
-   //           * upcMat_test essentially needs transposition and linearization by row,
-   //           * starting from the last row */
-   //           for(int upcMatCol = 0; upcMatCol < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatCol++){
-   //                 VECTYPE upcBuf_test = 0;
-   //                 for(int upcMatRow = 0; upcMatRow < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatRow++){
-   //                 uint8_t matByte_test = upcMat_test[upcMatRow];
-   // #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-   //                 upcBuf_test |=  ((VECTYPE)(matByte_test)) << (8*upcMatRow);
-   // #else
-   //                 upcBuf_test |=  (upcBuf_test << 8) + ((VECTYPE)(matByte_test));
-   // #endif
-   //                    upcMat_test[upcMatRow] = upcMat_test[upcMatRow] >> 8;
-   //                 }
-   //                 VECTYPE* vp_test = (VECTYPE *)(&unsatParityChecks_test[i][valueIdx_test+8*upcMatCol]);
-   //                 *(vp_test) = upcBuf_test;
-   //           }
-   //           //END REMOVE
-
          } /* end of for valueIdx */
       } // end for i
-
-// // test
-//
-//       for (int i = 0; i < N0; i++) {
-//         for (int valueIdx_test = 0; valueIdx_test < P; valueIdx_test = valueIdx_test + DIGIT_SIZE_b) {
-//            memset(upcMat_test, 0 , VECTYPE_SIZE_B*(VECTYPE_SIZE_b/BIT_SIZE_UPC));
-//            /* this fetches DIGIT_SIZE_b bits from each Htrpos, packed, and adds them to the 64 upc counters in upcMat_test */
-//            for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
-//                   POSITION_T basePos_test = (HtrPosOnes[i][HtrOneIdx]+valueIdx_test);
-//                   basePos_test = basePos_test %P ;
-//                   /* lsb here is the one in base pos, others are subseq*/
-//                   packedSynBits_test = gf2x_get_DIGIT_SIZE_coeff_vector_boundless(currSyndrome_test,basePos_test);
-//                   for(int upcMatRow = 0; upcMatRow < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatRow++){
-//                      upcMat_test[upcMatRow] += packedSynBits_test & VEC_COMB_MASK;
-//                      packedSynBits_test = packedSynBits_test >> 1;
-//                   }
-//
-//           }/* end of for computing 64 upcs*/
-//            /* commit computed UPCs in the upc vector, in the proper order.
-//            * upcMat_test essentially needs transposition and linearization by row,
-//            * starting from the last row */
-//            for(int upcMatCol = 0; upcMatCol < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatCol++){
-//                 VECTYPE upcBuf_test = 0;
-//                 for(int upcMatRow = 0; upcMatRow < VECTYPE_SIZE_b/BIT_SIZE_UPC; upcMatRow++){
-//                  uint8_t matByte_test = upcMat_test[upcMatRow];
-//  #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-//                  upcBuf_test |=  ((VECTYPE)(matByte_test)) << (8*upcMatRow);
-//  #else
-//                  upcBuf_test |=  (upcBuf_test << 8) + ((VECTYPE)(matByte_test));
-//  #endif
-//                     upcMat_test[upcMatRow] = upcMat_test[upcMatRow] >> 8;
-//                 }
-//                 VECTYPE* vp_test = (VECTYPE *)(&unsatParityChecks_test[i][valueIdx_test+8*upcMatCol]);
-//                 *(vp_test) = upcBuf_test;
-//            } // end for upcMatCol
-//         } // end for valueIdx_test
-//       } // end for i
-//
-// printf("\nVect:\n");
-// print_matrix(unsatParityChecks, 8, 32);
-// printf("\nNon vect:\n");
-// print_matrix(unsatParityChecks_test, 8, 32);
-// // end test
 
       /* circular padding of unsatisfiedParityChecks so that the vector
        * correlation computation does not need to wraparound loads*/

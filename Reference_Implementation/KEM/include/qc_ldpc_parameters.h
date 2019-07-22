@@ -2,9 +2,9 @@
  *
  * <qc_ldpc_parameters.h>
  *
- * @version 1.0 (September 2017)
+ * @version 2.0 (March 2019)
  *
- * Reference ISO-C99 Implementation of LEDAkem cipher" using GCC built-ins.
+ * Reference ISO-C11 Implementation of the LEDAcrypt KEM cipher using GCC built-ins.
  *
  * In alphabetical order:
  *
@@ -39,31 +39,31 @@
 #define HASH_BYTE_LENGTH (32)
 // N0 defined in the makefile
 #if N0 == 2
-#define    P  (15013)  // modulus(x) = x^P-1
-#define    DV (9)  // odd number
-#define    M  (9)
-#define    M0 (5)
-#define    M1 (4)
-#define    NUM_ERRORS_T   (143)
+#define    P  (14939)  // modulus(x) = x^P-1
+#define    DV (11)  // odd number
+#define    M  (7)
+#define    M0 (4)
+#define    M1 (3)
+#define    NUM_ERRORS_T   (136)
 
 #elif N0 == 3
-#define    P  (9643)  // modulus(x) = x^P-1
-#define    DV (13)  // odd number
-#define    M  (7)
-#define    M0 (3)
-#define    M1 (2)
+#define    P  (8269)  // modulus(x) = x^P-1
+#define    DV (9)  // odd number
+#define    M  (9)
+#define    M0 (4)
+#define    M1 (3)
 #define    M2 (2)
-#define    NUM_ERRORS_T   (90)
+#define    NUM_ERRORS_T   (86)
 
 #elif N0 == 4
-#define    P  (8467)  // modulus(x) = x^P-1
-#define    DV (11)  // odd number
-#define    M  (9)
-#define    M0 (3)
+#define    P  (7547)  // modulus(x) = x^P-1
+#define    DV (13)  // odd number
+#define    M  (7)
+#define    M0 (2)
 #define    M1 (2)
 #define    M2 (2)
-#define    M3 (2)
-#define    NUM_ERRORS_T   (72)
+#define    M3 (1)
+#define    NUM_ERRORS_T   (69)
 
 #else
 #error "Unsupported number of circulant blocks"
@@ -86,31 +86,31 @@
 #define HASH_BYTE_LENGTH (48)
 // N0 defined in the makefile
 #if N0 == 2
-#define    P  (24533)  // 57503 modulus(x) = x^P-1
+#define    P  (25693)  // modulus(x) = x^P-1
 #define    DV (13)  // odd number
 #define    M  (9)
 #define    M0 (5)
 #define    M1 (4)
-#define    NUM_ERRORS_T   (208)
+#define    NUM_ERRORS_T   (199)
 
 #elif N0 == 3
-#define    P  (17827)  // modulus(x) = x^P-1
-#define    DV (15)  // odd number
-#define    M  (9)
+#define    P  (16067)  // modulus(x) = x^P-1
+#define    DV (11)  // odd number
+#define    M  (11)
 #define    M0 (4)
-#define    M1 (3)
-#define    M2 (2)
-#define    NUM_ERRORS_T   (129)
+#define    M1 (4)
+#define    M2 (3)
+#define    NUM_ERRORS_T   (127)
 
 #elif N0 == 4
-#define    P  (14717)  // modulus(x) = x^P-1
+#define    P  (14341)  // modulus(x) = x^P-1
 #define    DV (15)  // odd number
 #define    M  (9)
 #define    M0 (3)
 #define    M1 (2)
 #define    M2 (2)
 #define    M3 (2)
-#define    NUM_ERRORS_T   (104)
+#define    NUM_ERRORS_T   (101)
 
 #else
 #error "Unsupported number of circulant blocks"
@@ -135,31 +135,31 @@
 #define HASH_BYTE_LENGTH (64)
 // N0 defined in the makefile
 #if N0 == 2
-#define    P  (37619)  // modulus(x) = x^P-1
+#define    P  (36877)  // modulus(x) = x^P-1
 #define    DV (11)  // odd number
 #define    M  (13)
 #define    M0 (7)
 #define    M1 (6)
-#define    NUM_ERRORS_T   (272)
+#define    NUM_ERRORS_T   (267)
 
 #elif N0 == 3
-#define    P  (28477)  // modulus(x) = x^P-1
-#define    DV (13)  // odd number
-#define    M  (13)
-#define    M0 (5)
+#define    P  (27437)  // modulus(x) = x^P-1
+#define    DV (15)  // odd number
+#define    M  (11)
+#define    M0 (4)
 #define    M1 (4)
-#define    M2 (4)
-#define    NUM_ERRORS_T   (172)
+#define    M2 (3)
+#define    NUM_ERRORS_T   (169)
 
 #elif N0 == 4
-#define    P  (22853)  // modulus(x) = x^P-1
+#define    P  (22691)  // modulus(x) = x^P-1
 #define    DV (13)  // odd number
 #define    M  (13)
 #define    M0 (4)
 #define    M1 (3)
 #define    M2 (3)
 #define    M3 (3)
-#define    NUM_ERRORS_T   (135)
+#define    NUM_ERRORS_T   (134)
 
 #else
 #error "Unsupported number of circulant blocks"

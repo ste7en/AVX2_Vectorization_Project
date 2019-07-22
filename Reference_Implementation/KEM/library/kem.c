@@ -2,9 +2,9 @@
  *
  * <kem.c>
  *
- * @version 1.0.2 (September 2018)
+ * @version 2.0 (March 2019)
  *
- * Reference ISO-C99 Implementation of LEDAkem cipher" using GCC built-ins.
+ * Reference ISO-C11 Implementation of the LEDAcrypt KEM cipher using GCC built-ins.
  *
  * In alphabetical order:
  *
@@ -86,29 +86,15 @@ int crypto_kem_dec( unsigned char *ss,
                     const unsigned char *sk )
 {
    DIGIT decoded_error_vector[N0*NUM_DIGITS_GF2X_ELEMENT];
-   DIGIT mockup_error_vector[N0*NUM_DIGITS_GF2X_ELEMENT];
-   memset(mockup_error_vector, 0x00, N0*NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_B);
-   memcpy(mockup_error_vector, ct, NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_B);
-   /* adding the prng seed to the final hash in case of decryption failure
-    * to address the official comment by Keita Xagawa */
-   memcpy(mockup_error_vector+NUM_DIGITS_GF2X_ELEMENT, 
-          ((privateKeyNiederreiter_t *)sk)->prng_seed, 
-           NUM_DIGITS_GF2X_ELEMENT > TRNG_BYTE_LENGTH ? TRNG_BYTE_LENGTH : 
-                                                       NUM_DIGITS_GF2X_ELEMENT);
 
    int decode_ok = decrypt_niederreiter(decoded_error_vector,
                                         (privateKeyNiederreiter_t *)sk,
                                         (DIGIT *)ct);
+   HASH_FUNCTION((const unsigned char *) decoded_error_vector,
+                    (N0*NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_B),
+                    ss);
    if (decode_ok == 1) {
-      HASH_FUNCTION((const unsigned char *) decoded_error_vector,
-                    (N0*NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_B),
-                    ss);
       return 0;
-   } else { /*Here due to constant time execution and IND-CCA requirements */
-      HASH_FUNCTION((const unsigned char *) mockup_error_vector,
-                    (N0*NUM_DIGITS_GF2X_ELEMENT*DIGIT_SIZE_B),
-                    ss);
-      return 1;
    }
    return 1;
 }

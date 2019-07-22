@@ -11,8 +11,8 @@
 
   REFERENCE_IMPL_PATH = ../../../Reference_Implementation/KEM
 
-  CFLAGS = -DCPU_WORD_BITS=64 -std=c99 -Wall -g -pedantic -Wmaybe-uninitialized -Wuninitialized -funroll-loops -O3 -march=haswell
-  LDFLAGS = -lm
+  CFLAGS = -g3 -DCPU_WORD_BITS=64 -std=c99 -Wall -pedantic -Wuninitialized -funroll-loops -O3 -march=haswell
+  LDFLAGS = -lm -L$(REFERENCE_IMPL_PATH)/include -lkeccak -static
   INCLUDES = -I./include -I$(REFERENCE_IMPL_PATH)/include
   SRCDIR_MAIN_FILE = library
   SRCDIR_LIB_FILE  = $(REFERENCE_IMPL_PATH)/library

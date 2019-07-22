@@ -32,9 +32,6 @@
 
 #pragma once
 
-#include <immintrin.h>
-#include "architecture_detect.h"
-#include <stdio.h>
 #include "gf2x_limbs.h"
 #include "qc_ldpc_parameters.h"
 
@@ -160,16 +157,15 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 
    unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
    unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
-   // printf("In DIGITSIZE: straightIdx= %u, digitIdx= %u\n", straightIdx, digitIdx);
    DIGIT lsw = poly[digitIdx];
    DIGIT msw = poly[digitIdx-1];
    unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
-   // printf("\ngf2x_get_DIGIT_SIZE_coeff_vector_boundless:\nstraightIdx = %u, digitIdx = %u, inDigitIdx = %u\n---", straightIdx, digitIdx, inDigitIdx);
 
    DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
 
    return result;
 }
+
 
 #ifdef HIGH_PERFORMANCE_X86_64
 
@@ -225,6 +221,7 @@ static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
    (*__result) = result;
 }
 #endif
+
 /*--------------------------------------------------------------------------*/
 
 /* returns the coefficient of the x^exponent term as the LSB of a digit */
