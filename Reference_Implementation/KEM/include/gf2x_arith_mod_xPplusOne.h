@@ -144,29 +144,6 @@ with this CPU word bitsize !!! "
 } // end population_count
 
 /*--------------------------------------------------------------------------*/
-
-/* returns a packed representation of the bits corresponding to the coefficients
- * of the range first_exponent to first_exponent+DIGIT_SIZE_b mod P. Does load
- * cyclically when the coefficients exceed P. Assumes cyclic padding with enough
- * bit material after P in the MSW of the poly. poly is NUM_DIGITS_GF2X_ELEMENT+1 DIGITS
- * long */
-
-static inline
-DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsigned int first_exponent)
-{
-
-   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
-   unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
-   DIGIT lsw = poly[digitIdx];
-   DIGIT msw = poly[digitIdx-1];
-   unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
-
-   DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
-
-   return result;
-}
-
-
 #ifdef HIGH_PERFORMANCE_X86_64
 
 #if (DIGIT_MAX == UINT64_MAX)
@@ -181,9 +158,28 @@ DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsig
 #error "unable to find the bitsize of size_t"
 #endif
 #define SHIFTWORDSIZE_BIT 64
+/* returns a packed representation of the bits corresponding to the coefficients
+ * of the range first_exponent to first_exponent+DIGIT_SIZE_b mod P. Does load
+ * cyclically when the coefficients exceed P. Assumes cyclic padding with enough
+ * bit material after P in the MSW of the poly. poly is NUM_DIGITS_GF2X_ELEMENT+1 DIGITS
+ * long */
+
+static inline
+DIGIT gf2x_get_DIGIT_SIZE_coeff_vector_boundless(const DIGIT poly[], const unsigned int first_exponent)
+{
+
+   unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+1)*DIGIT_SIZE_b-1) - first_exponent;
+   unsigned int digitIdx = straightIdx >> DIGIT_SIZE_b_EXPONENT; // instead of digitIdx = straightIdx / DIGIT_SIZE_b;
+   DIGIT lsw = poly[digitIdx];
+   DIGIT msw = poly[digitIdx-1];
+   unsigned int inDigitIdx = first_exponent % DIGIT_SIZE_b;
+
+   DIGIT result = (msw  << (DIGIT_SIZE_b-inDigitIdx) ) | (lsw >> (inDigitIdx));
+
+   return result;
+}
 
 static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
-   // if (imm8 > 63) printf("%d\n", imm8);
    __m256i __t0 = _mm256_slli_epi64(a, imm8);
    __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x90);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x00);
@@ -192,7 +188,6 @@ static inline __m256i _mm256_SHIFT_LEFT_bit(__m256i a, int imm8) {
 }
 
 static inline __m256i _mm256_SHIFT_RIGHT_bit(__m256i a, int imm8) {
-   // if (imm8 > 63) printf("%d\n", imm8);
    __m256i __t0 = _mm256_srli_epi64(a, imm8);
    __m256i __tt0 = _mm256_permute4x64_epi64 (a, 0x39);
    __m256i __t1 = _mm256_insert_epi64 (__tt0, 0x00, 0x03);
@@ -203,7 +198,7 @@ static inline void gf2x_get_M256_SIZE_coeff_vector_boundless(const DIGIT poly[],
                                                              const unsigned int first_exponent,
                                                              __m256i *restrict __result) {
    unsigned int straightIdx = ((NUM_DIGITS_GF2X_ELEMENT+4)*DIGIT_SIZE_b-1) - first_exponent;
-   unsigned int digitIdx = straightIdx / DIGIT_SIZE_b;
+   unsigned int digitIdx = straightIdx >> DIGIT_SIZE_b_EXPONENT;
    __m256i lsw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-3]);
            lsw = _mm256_permute4x64_epi64(lsw, 0b00011011);
    __m256i msw = _mm256_lddqu_si256((__m256i*)&poly[digitIdx-4]);
