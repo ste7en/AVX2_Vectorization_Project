@@ -117,22 +117,19 @@ static inline void transpose_matrix_32_8(__m256i *restrict matrix){
             _mm256_storeu_si256(&matrix[7], row7i);
 }
 
-void print_matrix(__m256i* matrix, int rows, int cols){
-    unsigned char* v;
-    int i, j, k;
-    /* Access matrix as chars */
-    v = (unsigned char*)matrix;
-    i = 0;
-    /* Print the chars v[i] , i = 0, 1, 2, 3,..., 255                          */
-    /* rows and cols only controls the positions of the new lines printf("\n") */
-    for (k = 0; k < rows; k++){
-        for (j = 0; j < cols; j++){
-            printf("%4hhu", v[i]);
-            i = i + 1;
-        }
-        printf("\n");
-    }
-    printf("\n");
+static inline unsigned int avx2Modulo(uint32_t a, uint32_t b) {
+   __m256i x    = _mm256_set1_epi32(a);
+   __m256i base = _mm256_set1_epi32(b);
+
+   __m256i t0   = _mm256_sub_epi32(base, x);
+   __m256i t1   = _mm256_srai_epi32(t0, 0x1F);
+   __m256i t2   = _mm256_and_si256 (t1, base);
+
+   return _mm256_extract_epi32 (_mm256_sub_epi32(x, t2), 0x00);
+}
+
+static inline unsigned int logicalModulo(uint32_t a, uint32_t b) {
+   return (a - ( ( ( (signed int)(b) - (signed int)(a) ) >> 31) & b ) );
 }
 /******************** END of functions' definitions for vector operations *************************/
 
@@ -198,9 +195,11 @@ int bf_decoding(DIGIT out[], // N0 polynomials
 
             /* this fetches AVX2_REG_SIZE_b bits from each Htrpos, packed, and adds them to the 256 upc counters in upcmat */
             for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
-               // TODO: - vectorize this modulo operation
                POSITION_T basePos = (HtrPosOnes[i][HtrOneIdx]+valueIdx);
-               basePos = basePos % P ;
+
+               // semantically equivalent to basePos = basePos & P;
+               //basePos = avx2Modulo(basePos, P);
+               basePos = logicalModulo(basePos, P);
 
                // __m128i basePos = _mm_set1_epi32(tmp);
                /* lsb here is the one in base pos, others are subseq*/
