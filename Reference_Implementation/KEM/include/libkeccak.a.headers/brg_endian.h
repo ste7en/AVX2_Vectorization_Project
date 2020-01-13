@@ -58,7 +58,7 @@
 #if defined( BIG_ENDIAN ) && defined( LITTLE_ENDIAN )
 #  if defined( BYTE_ORDER ) && BYTE_ORDER == BIG_ENDIAN
 #    define PLATFORM_BYTE_ORDER IS_BIG_ENDIAN
-#  elif defined( BYTE_ORDER ) && BYTE_ORDER == LITTLE_ENDIAN
+#  elif defined( BYTE_ORDER ) && BYTE_ORDER == 1234
 #    define PLATFORM_BYTE_ORDER IS_LITTLE_ENDIAN
 #  endif
 #elif defined( BIG_ENDIAN )
