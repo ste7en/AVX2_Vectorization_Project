@@ -36,11 +36,26 @@
 #include <assert.h>
 #include <immintrin.h>
 
+   #ifdef DEBUG
+   #include <stdio.h>
+   #endif
+
 #define ROTBYTE(a)   ( (a << 8) | (a >> (DIGIT_SIZE_b - 8)) )
 #define ROTUPC(a)   ( (a >> 8) | (a << (DIGIT_SIZE_b - 8)) )
 #define ROUND_UP(amount, round_amt) ( ((amount+round_amt-1)/round_amt)*round_amt )
 
 #ifdef HIGH_PERFORMANCE_X86_64
+
+#define SIZE_OF_UPC_VECTORIZED_READ 32
+#define SIZE_OF_UPC_VECTORIZED_READ_AVX2 256
+#define VECTYPE DIGIT
+#define VECTYPE_SIZE_b DIGIT_SIZE_b
+#define VECTYPE_SIZE_B DIGIT_SIZE_B
+#define BIT_SIZE_UPC 8
+#define VEC_COMB_MASK 0x0101010101010101ULL
+#define AVX2_REG_SIZE_b 256
+#define AVX2_REG_SIZE_B 32
+#define UINT32_AVX2_VEC_READ_SIZE 8
 
 /******************** START of functions' definitions for vector operations *************************/
 static inline __m256i permute_row(__m256i row){
@@ -128,6 +143,16 @@ static inline unsigned int avx2Modulo(uint32_t a, uint32_t b) {
    return _mm256_extract_epi32 (_mm256_sub_epi32(x, t2), 0x00);
 }
 
+static inline __m256i avx2_epi32_Modulo(__m256i a, uint32_t b) {
+   __m256i base = _mm256_set1_epi32(b);
+
+   __m256i t0   = _mm256_sub_epi32(base, a);
+   __m256i t1   = _mm256_srai_epi32(t0, 0x1F);
+   __m256i t2   = _mm256_and_si256 (t1, base);
+
+   return _mm256_sub_epi32(a, t2);
+}
+
 static inline unsigned int logicalModulo(uint32_t a, uint32_t b) {
    return (a - ( ( ( (signed int)(b) - (signed int)(a) ) >> 31) & b ) );
 }
@@ -149,15 +174,7 @@ int bf_decoding(DIGIT out[], // N0 polynomials
     * This strategy allows to replicate an entire digit at the end of the computed UPCs
     * effectively removing altogether the (key-dependent) checks which would happen
     * in the correlation computation process */
-#define SIZE_OF_UPC_VECTORIZED_READ 32
-#define SIZE_OF_UPC_VECTORIZED_READ_AVX2 256
-#define VECTYPE DIGIT
-#define VECTYPE_SIZE_b DIGIT_SIZE_b
-#define VECTYPE_SIZE_B DIGIT_SIZE_B
-#define BIT_SIZE_UPC 8
-#define VEC_COMB_MASK 0x0101010101010101ULL
-#define AVX2_REG_SIZE_b 256
-#define AVX2_REG_SIZE_B 32
+
    uint8_t unsatParityChecks[N0][ ROUND_UP(P,SIZE_OF_UPC_VECTORIZED_READ_AVX2)+SIZE_OF_UPC_VECTORIZED_READ_AVX2 ] = {{0}};
    POSITION_T currQBitPos[M];
    /* syndrome is endowed with cyclic padding in the leading word to avoid
@@ -186,18 +203,73 @@ int bf_decoding(DIGIT out[], // N0 polynomials
       __m256i packedSynBits = _mm256_setzero_si256();
 
       for (int i = 0; i < N0; i++) {
-         // for(int valueIdx = 0, valueIdx_test = 0; valueIdx < P, valueIdx_test < P; valueIdx = valueIdx + AVX2_REG_SIZE_b, valueIdx_test = valueIdx_test + DIGIT_SIZE_b) {
+
          for(int valueIdx = 0; valueIdx < P; valueIdx = valueIdx + AVX2_REG_SIZE_b) {
 
             for (int upcMatRow = 0; upcMatRow < BIT_SIZE_UPC; upcMatRow++) {
                vecUpcMat[upcMatRow] = _mm256_setzero_si256();
             }
 
+            int HtrOneIdx = 0;
+            int vecBasePosIdx;
+            __m256i vecBasePos;
+            do {
+               vecBasePos = _mm256_setzero_si256();
+               vecBasePosIdx = 0;
+               /* vectorizing 8x32-bit modulo operations, the remaining part will be executed with a C-style modulo */
+               for (; HtrOneIdx < DV && vecBasePosIdx < UINT32_AVX2_VEC_READ_SIZE; HtrOneIdx++) {
+                  vecBasePos = _mm256_insert_epi32 (vecBasePos, (HtrPosOnes[i][HtrOneIdx]+valueIdx), vecBasePosIdx);
+                  vecBasePosIdx++;
+               }
+
+               vecBasePos = avx2_epi32_Modulo(vecBasePos, P);
+
+               for (int vecIndex = 0; vecIndex < UINT32_AVX2_VEC_READ_SIZE; vecIndex++) {
+                  gf2x_get_M256_SIZE_coeff_vector_boundless(currSyndrome, _mm256_extract_epi32(vecBasePos, vecIndex), &packedSynBits);
+
+                  for(int upcMatRow = 0; upcMatRow < BIT_SIZE_UPC; upcMatRow++) {
+                     vecUpcMat[upcMatRow] = _mm256_add_epi64(vecUpcMat[upcMatRow],
+                                                             _mm256_and_si256(packedSynBits,
+                                                                              _mm256_set1_epi64x(VEC_COMB_MASK))
+                                                            );
+                     packedSynBits = _mm256_SHIFT_RIGHT_bit(packedSynBits, 0x01);
+                  }
+               }
+
+            } while (HtrOneIdx < (DV - (DV%UINT32_AVX2_VEC_READ_SIZE)));
+
             /* this fetches AVX2_REG_SIZE_b bits from each Htrpos, packed, and adds them to the 256 upc counters in upcmat */
-            for(int HtrOneIdx = 0; HtrOneIdx < DV; HtrOneIdx++) {
+/*
+// The following code executes and vectorizes the remaining DV%UINT32_AVX2_VEC_READ_SIZE indexes,
+// but it makes computation a lot slower and I don't know why. Probably each insert takes too much than
+// a single logicalModulo.
+
+            vecBasePosIdx = 0;
+            vecBasePos = _mm256_setzero_si256();
+            for(; HtrOneIdx < DV; HtrOneIdx++) {
+               vecBasePos = _mm256_insert_epi32 (vecBasePos, (HtrPosOnes[i][HtrOneIdx]+valueIdx), vecBasePosIdx);
+               vecBasePosIdx++;
+            }
+
+            vecBasePos = avx2_epi32_Modulo(vecBasePos, P);
+
+            for (size_t vecIndex = 0; vecIndex < vecBasePosIdx; vecIndex++) {
+               gf2x_get_M256_SIZE_coeff_vector_boundless(currSyndrome, _mm256_extract_epi32 (vecBasePos, vecIndex), &packedSynBits);
+
+               for(int upcMatRow = 0; upcMatRow < BIT_SIZE_UPC; upcMatRow++) {
+                  vecUpcMat[upcMatRow] = _mm256_add_epi64(vecUpcMat[upcMatRow],
+                                                          _mm256_and_si256(packedSynBits,
+                                                                           _mm256_set1_epi64x(VEC_COMB_MASK))
+                                                         );
+                  packedSynBits = _mm256_SHIFT_RIGHT_bit(packedSynBits, 0x01);
+               }
+            }
+*/
+
+            for(; HtrOneIdx < DV; HtrOneIdx++) {
                POSITION_T basePos = (HtrPosOnes[i][HtrOneIdx]+valueIdx);
 
-               // semantically equivalent to basePos = basePos & P;
+               // semantically equivalent to basePos = basePos % P;
                //basePos = avx2Modulo(basePos, P);
                basePos = logicalModulo(basePos, P);
 
@@ -212,7 +284,8 @@ int bf_decoding(DIGIT out[], // N0 polynomials
                                                          );
                   packedSynBits = _mm256_SHIFT_RIGHT_bit(packedSynBits, 0x01);
                }
-            } /* end of for computing 256 upcs*/ // index HtrOneIdx
+            }
+            /* end of for computing 256 upcs*/ // index HtrOneIdx
 
             /* commit computed UPCs in the upc vector, in the proper order.
              * UPCmat essentially needs transposition and linearization by row,
